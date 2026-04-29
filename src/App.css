@@ -732,3 +732,175 @@ html[data-theme='light'] .tech-list span {
   transform: translateY(-2px);
   background: rgba(128, 128, 128, 0.18);
 }
+
+.github-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+
+  min-width: 120px;
+  padding: 0.72rem 1.35rem;
+
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+
+  background: rgba(255, 255, 255, 0.06); /* more visible */
+  color: var(--text);
+
+  font-size: 0.92rem;
+  font-weight: 600;
+
+  text-decoration: none;
+  cursor: pointer;
+
+  transition: all 0.25s ease;
+}
+
+/* Hover */
+.github-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.45);
+
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(255, 255, 255, 0.08);
+}
+
+/* Arrow animation */
+.github-button .arrow {
+  transition: transform 0.25s ease;
+}
+
+.github-button:hover .arrow {
+  transform: translateX(4px);
+}
+
+html[data-theme='light'] .github-button {
+  border: 1px solid rgba(0, 0, 0, 0.14) !important;
+  background: rgba(255, 255, 255, 0.75) !important;
+  color: #111 !important;
+}
+
+html[data-theme='light'] .github-button:hover {
+  border-color: rgba(0, 0, 0, 0.28) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+}
+
+.image-slider {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  border-radius: 18px;
+}
+
+.image-slider img {
+  min-width: 100%;
+  height: 100%;
+  object-fit: cover;
+  scroll-snap-align: center;
+  border-radius: 18px;
+}
+
+.project-preview {
+  width: 100%;
+  height: 220px; /* 👈 adjust if you want taller/shorter */
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.image-slider img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 🔥 this does the cropping */
+  flex-shrink: 0;
+}
+
+.image-slider img {
+  transition: transform 0.4s ease;
+}
+
+.project-card:hover .image-slider img {
+  transform: scale(1.05);
+}
+
+.image-carousel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.carousel-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 18px;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.carousel-button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+
+  background: rgba(0, 0, 0, 0.45);
+  color: white;
+
+  cursor: pointer;
+  font-size: 1.4rem;
+  font-family: Arial, sans-serif;
+  line-height: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0 0 1px 0;
+
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.carousel-button:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.carousel-button-left {
+  left: 10px;
+}
+
+.carousel-button-right {
+  right: 10px;
+}
+
+.carousel-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.45rem;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.45);
+  padding: 0;
+  cursor: pointer;
+}
+
+.active-dot {
+  background: white;
+  width: 18px;
+}
