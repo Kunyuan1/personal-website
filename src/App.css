@@ -102,7 +102,7 @@ main {
   align-items: center;
 
   width: 100%;
-  padding: 0 20px;   /* controls distance from edges */
+  padding: 0 20px; 
 
   justify-content: flex-end;
 }
@@ -167,7 +167,6 @@ main {
   line-height: 1.05;
   letter-spacing: -0.055em;
 
-  /* subtle glow effect */
   background: linear-gradient(180deg, #ffffff, #bfbfbf);
   background-clip: text;
   -webkit-background-clip: text;
@@ -505,8 +504,8 @@ html[data-theme='light'] .site::before {
 }
 
 .primary-project-button:hover {
-  background: #222;          /* slightly lighter than black */
-  color: #fff;               /* keep strong contrast */
+  background: #222;      
+  color: #fff;               
   transform: translateY(-2px);
 }
 
@@ -589,8 +588,6 @@ html[data-theme='light'] a.btn.primary:hover {
   opacity: 1 !important;
 }
 
-/* ===== CLICK + HOVER ANIMATION (FINAL) ===== */
-
 .btn,
 .project-button {
   position: relative;
@@ -598,21 +595,18 @@ html[data-theme='light'] a.btn.primary:hover {
   transition: transform 0.15s ease, box-shadow 0.2s ease;
 }
 
-/* Hover (keeps visibility + adds lift) */
 .btn:hover,
 .project-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 28px rgba(128, 128, 128, 0.18);
 }
 
-/* Click press effect */
 .btn:active,
 .project-button:active {
   transform: scale(0.96);
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
 }
 
-/* Ripple effect */
 .btn::after,
 .project-button::after {
   content: "";
@@ -628,7 +622,6 @@ html[data-theme='light'] a.btn.primary:hover {
   opacity: 0;
 }
 
-/* Trigger ripple on click */
 .btn:active::after,
 .project-button:active::after {
   width: 200%;
@@ -637,13 +630,10 @@ html[data-theme='light'] a.btn.primary:hover {
   transition: width 0.4s ease, height 0.4s ease, opacity 0.6s ease;
 }
 
-/* Light mode ripple fix */
 html[data-theme='light'] .btn::after,
 html[data-theme='light'] .project-button::after {
   background: rgba(0, 0, 0, 0.15);
 }
-
-/* ===== SMOOTH SCROLL + SECTION REVEAL ANIMATIONS ===== */
 
 html {
   scroll-behavior: smooth;
@@ -693,7 +683,6 @@ html {
   }
 }
 
-/* Fix spacing between project bubbles */
 .tech-list {
   display: flex;
   flex-wrap: wrap;
@@ -702,13 +691,11 @@ html {
   margin-bottom: 1rem;
 }
 
-/* Add more space between tech bubbles and buttons */
 .project-actions {
   margin-top: 0.0rem;
   gap: 1rem;
 }
 
-/* Fix tech bubbles (restore border + background) */
 .tech-list span {
   display: inline-block;
   padding: 0.55rem 1.05rem;
@@ -745,7 +732,7 @@ html[data-theme='light'] .tech-list span {
   border-radius: 9999px;
   border: 1px solid rgba(255, 255, 255, 0.25);
 
-  background: rgba(255, 255, 255, 0.06); /* more visible */
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
 
   font-size: 0.92rem;
@@ -757,7 +744,6 @@ html[data-theme='light'] .tech-list span {
   transition: all 0.25s ease;
 }
 
-/* Hover */
 .github-button:hover {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.45);
@@ -766,7 +752,6 @@ html[data-theme='light'] .tech-list span {
   box-shadow: 0 10px 25px rgba(255, 255, 255, 0.08);
 }
 
-/* Arrow animation */
 .github-button .arrow {
   transition: transform 0.25s ease;
 }
@@ -806,7 +791,7 @@ html[data-theme='light'] .github-button:hover {
 
 .project-preview {
   width: 100%;
-  height: 220px; /* 👈 adjust if you want taller/shorter */
+  height: 220px;
   overflow: hidden;
   border-radius: 18px;
 }
@@ -814,7 +799,7 @@ html[data-theme='light'] .github-button:hover {
 .image-slider img {
   width: 100%;
   height: 100%;
-  object-fit: cover; /* 🔥 this does the cropping */
+  object-fit: cover;
   flex-shrink: 0;
 }
 
@@ -903,4 +888,97 @@ html[data-theme='light'] .github-button:hover {
 .active-dot {
   background: white;
   width: 18px;
+}
+
+@media (max-width: 768px) {
+  .nav-inner {
+    min-height: auto;
+    padding: 1rem;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.9rem;
+  }
+
+  .nav-brand {
+    position: static;
+    transform: none;
+  }
+
+  .nav-links {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    font-size: 0.9rem;
+  }
+
+  main {
+    padding-top: 130px;
+  }
+
+  .hero {
+    min-height: auto;
+    padding: 5rem 0 4rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.4rem, 13vw, 4rem);
+    line-height: 1.08;
+  }
+
+  .hero-sub {
+    font-size: 1rem;
+    padding: 0 0.5rem;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .section {
+    padding: 4rem 0;
+  }
+
+  .section h2 {
+    font-size: clamp(2rem, 10vw, 3rem);
+  }
+
+  .projects-grid,
+  .upgraded-projects,
+  .skills-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .project-card,
+  .panel,
+  .skill-card {
+    padding: 1.4rem;
+  }
+
+  .project-preview {
+    height: 220px;
+  }
+
+  .carousel-button {
+    width: 32px;
+    height: 32px;
+    font-size: 1.25rem;
+  }
+
+  .contact-links {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .contact-link,
+  .contact-links a,
+  .github-button {
+    width: 100%;
+    justify-content: center;
+  }
 }
