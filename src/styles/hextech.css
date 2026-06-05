@@ -1014,14 +1014,10 @@
   .hex-contact-handle { font-size: 0.95rem; }
   .hex-contact-icon { width: 36px; height: 36px; font-size: 0.85rem; }
 
-  /* ── Poro — smaller on mobile, move to left so it doesn't block content ── */
+  /* ── Poro — move to left so it doesn't block content ── */
   .poro-wrap {
     bottom: 1rem;
     right: 0.8rem;
-  }
-  .poro-svg {
-    width: 65px !important;
-    height: 57px !important;
   }
   .poro-cookie svg { width: 28px; height: 28px; }
   .poro-feed-count { font-size: 0.45rem; top: -4px; right: -5px; }
