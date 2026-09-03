@@ -26,6 +26,22 @@
   --accent: var(--sun-a);
 }
 
+/* ---------------------------------------------------------------
+   Chaotic Era.
+
+   EraProvider sets data-era on <html>, so the whole site shifts at once.
+   Only the ambient layer changes — accent, lines, the crimson wash. Body
+   text keeps its colour, its position and its contrast, because someone
+   reading about a project should never be interrupted by the weather.
+   --------------------------------------------------------------- */
+:root[data-era="chaotic"] {
+  --accent: var(--sun-c);
+  --line: #2b1f24;
+  --line-bright: #46303a;
+  --muted: #a89298;
+  --faint: #8a7076;
+}
+
 @theme inline {
   --color-void: var(--void);
   --color-deep: var(--deep);
@@ -81,6 +97,17 @@
     color: var(--void);
   }
 
+  /* Ease the era shift so it reads as weather, not a jump cut. */
+  a,
+  button,
+  .eyebrow,
+  dt {
+    transition:
+      color 1200ms ease,
+      border-color 1200ms ease,
+      background-color 1200ms ease;
+  }
+
   :focus-visible {
     outline: 1px solid var(--sun-a);
     outline-offset: 4px;
@@ -127,6 +154,24 @@
   .reveal[data-visible="true"] {
     opacity: 1;
     transform: none;
+  }
+
+  /* Crimson wash over the whole page during a Chaotic Era. Fixed, behind all
+     content, and never dark enough to affect text contrast. */
+  .era-wash {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1600ms ease;
+    background:
+      radial-gradient(120% 80% at 50% 0%, rgba(212, 84, 74, 0.16), transparent 70%),
+      radial-gradient(100% 60% at 50% 100%, rgba(212, 84, 74, 0.1), transparent 70%);
+  }
+
+  :root[data-era="chaotic"] .era-wash {
+    opacity: 1;
   }
 
   /* Distant starfield, used behind content sections. */

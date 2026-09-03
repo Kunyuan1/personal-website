@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 
+import CollapseNotice from "@/components/CollapseNotice";
+import EraProvider from "@/components/EraProvider";
 import Footer from "@/components/Footer";
 import Nav from "@/components/Nav";
 import { CJK_GLYPHS, site } from "@/data/site";
@@ -90,11 +92,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           Skip to content
         </a>
 
-        <Nav />
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-        <Footer />
+        <EraProvider>
+          <div className="era-wash" aria-hidden />
+          <Nav />
+          <main id="main" className="relative z-10 flex-1">
+            {children}
+          </main>
+          <Footer />
+          <CollapseNotice />
+        </EraProvider>
       </body>
     </html>
   );
