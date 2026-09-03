@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------
+   Dark forest palette.
+   The universe is dark; light is rare and deliberate. Near-black
+   ground, enormous negative space, and three accents — one per sun
+   in the Trisolaran system.
+   --------------------------------------------------------------- */
+:root {
+  --void: #05060a;
+  --deep: #080b12;
+  --surface: #0d111b;
+  --raised: #131826;
+
+  --ink: #e9ecf4;
+  --muted: #98a0b4;
+  --faint: #737c92;
+  --line: #1c2231;
+  --line-bright: #2a3247;
+
+  /* The three suns. */
+  --sun-a: #e6a94c; /* amber   — the steady one */
+  --sun-b: #7fb2ff; /* blue    — the distant one */
+  --sun-c: #d4544a; /* crimson — the dangerous one */
+
+  --accent: var(--sun-a);
+}
+
+@theme inline {
+  --color-void: var(--void);
+  --color-deep: var(--deep);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-bright: var(--line-bright);
+
+  --color-sun-a: var(--sun-a);
+  --color-sun-b: var(--sun-b);
+  --color-sun-c: var(--sun-c);
+  --color-accent: var(--accent);
+
+  --font-display: var(--font-display), ui-serif, Georgia, serif;
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--void);
+    color: var(--ink);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    text-wrap: pretty;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display), ui-serif, Georgia, serif;
+    text-wrap: balance;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+  }
+
+  [id] {
+    scroll-margin-top: 6rem;
+  }
+
+  ::selection {
+    background-color: var(--sun-a);
+    color: var(--void);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--sun-a);
+    outline-offset: 4px;
+  }
+}
+
+@layer utilities {
+  /* Chinese accent text — set in the CJK serif, never as the only label. */
+  .cjk {
+    font-family: "Noto Serif SC", var(--font-display), ui-serif, serif;
+    font-weight: 400;
+  }
+
+  /* Small mono label used above every section heading. */
+  .eyebrow {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* A single hairline that fades out at both ends. */
+  .rule {
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--line-bright) 20%,
+      var(--line-bright) 80%,
+      transparent
+    );
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  .reveal[data-visible="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Distant starfield, used behind content sections. */
+  .starfield {
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(233, 236, 244, 0.28), transparent),
+      radial-gradient(1px 1px at 75% 15%, rgba(233, 236, 244, 0.2), transparent),
+      radial-gradient(1px 1px at 45% 70%, rgba(233, 236, 244, 0.16), transparent),
+      radial-gradient(1px 1px at 88% 58%, rgba(233, 236, 244, 0.22), transparent),
+      radial-gradient(1px 1px at 12% 85%, rgba(233, 236, 244, 0.14), transparent),
+      radial-gradient(1px 1px at 62% 92%, rgba(233, 236, 244, 0.18), transparent);
+    background-size: 100% 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
