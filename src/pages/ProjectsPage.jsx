@@ -5,9 +5,9 @@ const PROJECTS = [
   {
     num: '01',
     name: 'Imposter',
-    type: 'Game Development · 2026',
-    desc: 'A classic imposter-style party game with multiple modes, built for friends to enjoy together.',
-    tags: ['JavaScript', 'CSS', 'React'],
+    type: 'Real-Time Multiplayer · 2026',
+    desc: 'An online social deduction party game. Players join a room with a four-letter code, take timed turns giving clues, then vote on who the imposter is — with anonymous voting, a tally screen, and a final guess mechanic. A Node WebSocket server keeps every player in sync.',
+    tags: ['React', 'Node.js', 'WebSockets', 'Vite'],
     href: 'https://github.com/Kunyuan1/Imposter',
     live: 'https://imposter-inky.vercel.app/',
   },
@@ -30,9 +30,9 @@ const PROJECTS = [
   {
     num: '04',
     name: 'Worst Birthday UI',
-    type: 'UI Design · 2024',
-    desc: 'A themed user interface project built around a creative and humorous birthday concept.',
-    tags: ['JavaScript', 'CSS', 'HTML'],
+    type: 'UI Experiment · 2024',
+    desc: 'A deliberately hostile interface. Entering your birthday means beating a hand of blackjack, then wrestling a calculator whose only operations are ×3, +7, ÷5 and square root. Built as a study in interaction cost — by making every choice the wrong one.',
+    tags: ['Python', 'Pygame'],
     href: 'https://github.com/Kunyuan1/Worst-Birthday-UI',
   },
 ]
