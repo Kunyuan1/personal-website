@@ -1,30 +1,57 @@
 "use client";
 
 import { useEra } from "@/components/EraProvider";
+import type { CollapseCause } from "@/lib/trisolaris";
 
 /**
- * Announces the end of a civilisation, in the book's own framing. Sits at the
- * bottom of the viewport and never covers content, so it can be ignored.
+ * How each world died. The cause is read out of the simulation state at the
+ * moment of destruction, so the notice always describes what actually
+ * happened rather than picking a line at random.
  */
+const FATES: Record<CollapseCause, { cjk: string; text: string }> = {
+  fire: {
+    cjk: "烈焰",
+    text: "The world fell into a sun and burned.",
+  },
+  syzygy: {
+    cjk: "三日连珠",
+    text: "All three suns rose together. The world was consumed by the tri-solar day.",
+  },
+  cold: {
+    cjk: "严寒",
+    text: "The world was flung out of the system, into the cold of the outer dark.",
+  },
+  starless: {
+    cjk: "恒星流散",
+    text: "One of the suns escaped, and the world froze in the long night that followed.",
+  },
+  drift: {
+    cjk: "脱水",
+    text: "The orbit never recovered. The civilization dehydrated, and did not wake.",
+  },
+};
+
 export default function CollapseNotice() {
-  const { collapsedCivilization } = useEra();
-  const visible = collapsedCivilization !== null;
+  const { collapse } = useEra();
 
   return (
     <div
       aria-live="polite"
       className={`pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-6 pb-6 transition-all duration-700 ${
-        visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+        collapse ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
       }`}
     >
-      {visible && (
-        <p className="max-w-md border border-sun-c/30 bg-void/90 px-5 py-3 text-center font-mono text-[11px] leading-relaxed text-muted backdrop-blur-sm">
-          <span className="cjk text-sun-c">
-            文明 #{collapsedCivilization} 已毁灭
+      {collapse && (
+        <p className="max-w-md border border-sun-c/30 bg-void/90 px-5 py-3.5 text-center font-mono text-[11px] leading-relaxed text-muted backdrop-blur-sm">
+          <span className="cjk block text-sun-c">
+            文明 #{collapse.civilization} 已毁灭 · {FATES[collapse.cause].cjk}
           </span>
-          <span className="mt-1.5 block">
-            Civilization {collapsedCivilization} was destroyed. The seed of
-            civilization remains, and will germinate again.
+          <span className="mt-2 block">
+            Civilization {collapse.civilization} was destroyed.{" "}
+            {FATES[collapse.cause].text}
+          </span>
+          <span className="mt-2 block text-faint">
+            The seed of civilization remains, and will germinate again.
           </span>
         </p>
       )}

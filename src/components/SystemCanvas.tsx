@@ -45,14 +45,23 @@ export default function SystemCanvas({ className = "" }: { className?: string })
 
       // On wide screens the text occupies the left, so the system sits to its
       // right. On narrow screens it recentres and sits behind the type.
-      // The planet orbits at 2.4, so ~6 world units across frames it with room
-      // for the wider excursions of a Chaotic Era.
       const wide = width >= 900;
       centerX = wide ? width * 0.68 : width * 0.5;
       centerY = wide ? height * 0.5 : height * 0.42;
+    };
+
+    /**
+     * Framed from the planet's own orbit, because the two periodic solutions
+     * put it at different radii. The 1.25 margin keeps a Stable Era orbit well
+     * inside the frame; a Chaotic Era can still throw the planet past the edge,
+     * which is the point.
+     */
+    const rescale = (system: System) => {
+      const extent = system.orbit.planetOrbit * 1.25;
+      const wide = width >= 900;
       scale = wide
-        ? Math.min((width * 0.46) / 3.1, height / 6.2)
-        : Math.min(width / 6.4, height / 7.4);
+        ? Math.min((width * 0.46) / extent, (height * 0.5) / extent)
+        : Math.min((width * 0.5) / extent, (height * 0.42) / extent);
     };
 
     const sx = (x: number) => centerX + x * scale;
@@ -138,6 +147,8 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     };
 
     const render = (system: System) => {
+      rescale(system);
+
       ctx.globalCompositeOperation = "source-over";
       ctx.globalAlpha = 1;
       ctx.fillStyle = "#05060a";

@@ -10,7 +10,14 @@ import {
   type ReactNode,
 } from "react";
 
-import { advance, createSystem, SIM_HZ, type Era, type System } from "@/lib/trisolaris";
+import {
+  advance,
+  createSystem,
+  SIM_HZ,
+  type CollapseCause,
+  type Era,
+  type System,
+} from "@/lib/trisolaris";
 
 const CIVILIZATION_KEY = "trisolaris.civilization";
 const STABILISED_KEY = "trisolaris.stabilised";
@@ -25,7 +32,7 @@ type EraContextValue = {
   era: Era;
   civilization: number;
   /** Set for a few seconds after a civilisation is destroyed. */
-  collapsedCivilization: number | null;
+  collapse: { civilization: number; cause: CollapseCause } | null;
   stabilised: boolean;
   setStabilised: (value: boolean) => void;
   /** Canvas components register here to be drawn each frame. */
@@ -50,7 +57,10 @@ export function useEra() {
 export default function EraProvider({ children }: { children: ReactNode }) {
   const [era, setEra] = useState<Era>("stable");
   const [civilization, setCivilization] = useState(1);
-  const [collapsedCivilization, setCollapsedCivilization] = useState<number | null>(null);
+  const [collapse, setCollapse] = useState<{
+    civilization: number;
+    cause: CollapseCause;
+  } | null>(null);
   const [stabilised, setStabilisedState] = useState(false);
 
   const systemRef = useRef<System | null>(null);
@@ -146,14 +156,14 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         for (const event of advance(system, 1)) {
           if (event.type !== "collapse") continue;
           const destroyed = event.civilization;
-          setCollapsedCivilization(destroyed);
+          setCollapse({ civilization: destroyed, cause: event.cause });
           try {
             localStorage.setItem(CIVILIZATION_KEY, String(destroyed + 1));
           } catch {
             // Non-persistent visitors simply restart at 1 next time.
           }
           clearTimeout(noticeTimer);
-          noticeTimer = setTimeout(() => setCollapsedCivilization(null), COLLAPSE_NOTICE_MS);
+          noticeTimer = setTimeout(() => setCollapse(null), COLLAPSE_NOTICE_MS);
         }
       }
 
@@ -211,7 +221,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       value={{
         era,
         civilization,
-        collapsedCivilization,
+        collapse,
         stabilised,
         setStabilised,
         registerRenderer,
