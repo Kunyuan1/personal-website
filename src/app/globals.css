@@ -35,11 +35,19 @@
    reading about a project should never be interrupted by the weather.
    --------------------------------------------------------------- */
 :root[data-era="chaotic"] {
+  /* The ground itself goes red-hot. SystemCanvas paints the same two values
+     (see CANVAS_GROUND there) so the hero doesn't sit as a cold rectangle in
+     the middle of a warm page. */
+  --void: #1b0a0a;
+  --deep: #200d0d;
+  --surface: #271113;
+  --raised: #301719;
+
   --accent: var(--sun-c);
-  --line: #2b1f24;
-  --line-bright: #46303a;
-  --muted: #a89298;
-  --faint: #8a7076;
+  --line: #452627;
+  --line-bright: #603435;
+  --muted: #c6a9a9;
+  --faint: #a58585;
 }
 
 @theme inline {
@@ -73,6 +81,7 @@
 
   body {
     background-color: var(--void);
+    transition: background-color 1600ms ease;
     color: var(--ink);
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
     text-wrap: pretty;
@@ -166,8 +175,8 @@
     opacity: 0;
     transition: opacity 1600ms ease;
     background:
-      radial-gradient(120% 80% at 50% 0%, rgba(212, 84, 74, 0.16), transparent 70%),
-      radial-gradient(100% 60% at 50% 100%, rgba(212, 84, 74, 0.1), transparent 70%);
+      radial-gradient(130% 90% at 50% 0%, rgba(226, 96, 78, 0.3), transparent 72%),
+      radial-gradient(110% 70% at 50% 100%, rgba(178, 52, 44, 0.22), transparent 74%);
   }
 
   :root[data-era="chaotic"] .era-wash {

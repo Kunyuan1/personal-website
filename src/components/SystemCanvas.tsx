@@ -14,6 +14,19 @@ import {
 const TRAIL_BANDS = 14;
 
 /**
+ * The canvas is opaque, so it has to repaint the page's own background or the
+ * hero would stay a cold rectangle while the rest of the site goes red. These
+ * must match --void in globals.css for the two eras.
+ */
+const CANVAS_GROUND = {
+  stable: [5, 6, 10],
+  chaotic: [27, 10, 10],
+} as const;
+
+/** Fraction of the remaining distance covered per frame, ~1.6s to converge. */
+const WARMTH_EASING = 0.026;
+
+/**
  * Draws the Trisolaran system. Owns no simulation state — EraProvider runs the
  * physics and calls back once per frame, so the canvas never triggers a React
  * render and the same system keeps running across route changes.
@@ -33,6 +46,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     let scale = 1;
     let centerX = 0;
     let centerY = 0;
+    let warmth = 0;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -149,10 +163,45 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     const render = (system: System) => {
       rescale(system);
 
+      // Ease toward the era's ground colour rather than cutting to it, so the
+      // canvas warms in step with the CSS transition on the rest of the page.
+      warmth += ((system.era === "chaotic" ? 1 : 0) - warmth) * WARMTH_EASING;
+      const cold = CANVAS_GROUND.stable;
+      const hot = CANVAS_GROUND.chaotic;
+      const r = Math.round(cold[0] + (hot[0] - cold[0]) * warmth);
+      const g = Math.round(cold[1] + (hot[1] - cold[1]) * warmth);
+      const b = Math.round(cold[2] + (hot[2] - cold[2]) * warmth);
+
       ctx.globalCompositeOperation = "source-over";
       ctx.globalAlpha = 1;
-      ctx.fillStyle = "#05060a";
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       ctx.fillRect(0, 0, width, height);
+
+      // The page-wide .era-wash sits behind <main>, so this opaque canvas
+      // blocks it and would leave a seam where the hero meets the rest of the
+      // page. Draw the same heat glow here so the two line up.
+      if (warmth > 0.01) {
+        const reach = Math.max(width, height) * 1.15;
+
+        const top = ctx.createRadialGradient(width * 0.5, 0, 0, width * 0.5, 0, reach);
+        top.addColorStop(0, `rgba(226, 96, 78, ${0.3 * warmth})`);
+        top.addColorStop(0.72, "rgba(226, 96, 78, 0)");
+        ctx.fillStyle = top;
+        ctx.fillRect(0, 0, width, height);
+
+        const bottom = ctx.createRadialGradient(
+          width * 0.5,
+          height,
+          0,
+          width * 0.5,
+          height,
+          reach,
+        );
+        bottom.addColorStop(0, `rgba(178, 52, 44, ${0.22 * warmth})`);
+        bottom.addColorStop(0.74, "rgba(178, 52, 44, 0)");
+        ctx.fillStyle = bottom;
+        ctx.fillRect(0, 0, width, height);
+      }
 
       // Additive, so trails bloom where the orbits cross.
       ctx.globalCompositeOperation = "lighter";
