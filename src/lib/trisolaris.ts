@@ -100,7 +100,7 @@ export const ORBITS: readonly Orbit[] = [
     vy: 0.5327261568568347,
     period: 6.3259,
     planetOrbit: 3.4,
-    stableDuration: 22,
+    stableDuration: 16,
   },
   {
     id: "moth",
@@ -110,7 +110,7 @@ export const ORBITS: readonly Orbit[] = [
     vy: 0.39606,
     period: 14.8939,
     planetOrbit: 4.4,
-    stableDuration: 30,
+    stableDuration: 20,
   },
 ];
 
@@ -163,6 +163,9 @@ export function createSystem(civilization = 1): System {
   computePlanetAcceleration(planet, suns);
 
   const planetPeriod = (2 * Math.PI * orbit.planetOrbit) / Math.sqrt(3 / orbit.planetOrbit);
+  // Only part of an orbit: a full one closes into a ring wide enough to reach
+  // across the hero and collide with the text.
+  const planetTrailSpan = planetPeriod * 0.34;
 
   return {
     orbit,
@@ -171,7 +174,7 @@ export function createSystem(civilization = 1): System {
     sunTrails: [[], [], []],
     planetTrail: [],
     sunTrailLength: Math.round(orbit.period / SIM_FRAME_TIME),
-    planetTrailLength: Math.round(planetPeriod / SIM_FRAME_TIME),
+    planetTrailLength: Math.round(planetTrailSpan / SIM_FRAME_TIME),
     era: "stable",
     eraElapsed: 0,
     civilization,

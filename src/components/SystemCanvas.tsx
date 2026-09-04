@@ -46,7 +46,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       // On wide screens the text occupies the left, so the system sits to its
       // right. On narrow screens it recentres and sits behind the type.
       const wide = width >= 900;
-      centerX = wide ? width * 0.68 : width * 0.5;
+      centerX = wide ? width * 0.73 : width * 0.5;
       centerY = wide ? height * 0.5 : height * 0.42;
     };
 
@@ -60,7 +60,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       const extent = system.orbit.planetOrbit * 1.25;
       const wide = width >= 900;
       scale = wide
-        ? Math.min((width * 0.46) / extent, (height * 0.5) / extent)
+        ? Math.min((width * 0.4) / extent, (height * 0.46) / extent)
         : Math.min((width * 0.5) / extent, (height * 0.42) / extent);
     };
 
