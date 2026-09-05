@@ -75,7 +75,7 @@ export const SETTLE_TIME = 5;
 export const HEAT_RISE = 2.6;
 export const HEAT_FALL = 7;
 /** Velocity kick applied to each sun when a Chaotic Era begins. */
-export const PERTURBATION = 0.45;
+export const PERTURBATION = 0.8;
 
 /**
  * Adaptive time-stepping for close encounters.
@@ -94,13 +94,42 @@ export const SPEED_REFERENCE = 2.4;
 /** The simulation will not run slower than this fraction of normal. */
 export const MIN_TIME_SCALE = 0.035;
 
-/** Beyond this a planet has been flung out of the system. */
-export const ESCAPE_RADIUS = 14;
+/**
+ * A sun further out than this when a civilisation falls is pulled back to this
+ * radius before the settle begins, so it glides in from the edge of the frame
+ * rather than being dragged across the whole screen.
+ */
+export const SETTLE_START_RADIUS = 5.5;
+
+/**
+ * A planet is gone once it passes this multiple of the system's outermost
+ * orbit — just beyond the edge of the frame, which is itself sized from that
+ * same radius.
+ *
+ * It cannot be one fixed distance for both solutions: the figure-eight's outer
+ * world sits at 4.2 and the moth's at 6.0, so any constant is either inside
+ * one frame or far outside the other. At a flat 14 the home world was off
+ * screen for a mean of 5.7s — up to 24s — before its death registered, and the
+ * notice arrived long after the moment it described.
+ */
+export const ESCAPE_FACTOR = 1.32;
+
+export function escapeRadiusFor(orbit: Orbit): number {
+  return orbit.planetRadii[orbit.planetRadii.length - 1] * ESCAPE_FACTOR;
+}
 /**
  * Beyond this a sun has escaped and the system has come apart. Without this
  * check the suns wander to hundreds of world units and leave the frame.
  */
 export const SUN_ESCAPE_RADIUS = 6;
+/**
+ * At the end of a Chaotic Era the home world must be within this fraction of
+ * its own orbit for the civilisation to count as having survived. The upper
+ * bound sits just inside ESCAPE_FACTOR, so a world beyond it has generally
+ * escaped and died of cold already rather than waiting for the timeout.
+ */
+export const SURVIVABLE_BAND: readonly [number, number] = [0.55, 1.72];
+
 /** Inside this of any sun, a planet is consumed. */
 export const BURN_RADIUS = 0.22;
 /** Suns closer together than this count as a conjunction — a tri-solar day. */
@@ -204,6 +233,8 @@ export type System = {
    * close encounter, when the step has to shrink to stay accurate.
    */
   timeScale: number;
+  /** The last cause reported, so a repeat can be avoided where possible. */
+  lastCause: CollapseCause | null;
 };
 
 export type SimEvent =
@@ -269,6 +300,7 @@ export function createSystem(civilization = 1): System {
     shadow: null,
     heat: 0,
     timeScale: 1,
+    lastCause: null,
   };
 }
 
@@ -402,22 +434,49 @@ function sunSpread(suns: Body[]): number {
 }
 
 /**
- * Why a world died, read from the state at the moment of destruction rather
- * than picked at random. Returns null if it is still alive.
+ * Every fate that is true of this world right now, read from the state rather
+ * than picked at random. More than one can apply at once — a world falling
+ * into a sun during a conjunction is both burning and caught in a syzygy.
  */
-function fateOf(planet: Planet, sys: System): CollapseCause | null {
+function fatesOf(planet: Planet, sys: System): CollapseCause[] {
   const nearest = Math.min(
     ...sys.suns.map((s) => Math.hypot(s.x - planet.x, s.y - planet.y)),
   );
+  const fates: CollapseCause[] = [];
 
   // A tri-solar day: all three suns bunched together with the world close by.
   // It doesn't have to fall into one of them to be cooked.
-  if (sunSpread(sys.suns) < SYZYGY_SPREAD && nearest < SYZYGY_RANGE) return "syzygy";
-  if (nearest < BURN_RADIUS) return "fire";
-  if (Math.hypot(planet.x, planet.y) > ESCAPE_RADIUS) return "cold";
+  if (sunSpread(sys.suns) < SYZYGY_SPREAD && nearest < SYZYGY_RANGE) fates.push("syzygy");
+  if (nearest < BURN_RADIUS) fates.push("fire");
+  const radius = Math.hypot(planet.x, planet.y);
+  if (radius > escapeRadiusFor(sys.orbit)) fates.push("cold");
   // A sun escaping strands every world in the dark just as surely.
-  if (sys.suns.some((s) => Math.hypot(s.x, s.y) > SUN_ESCAPE_RADIUS)) return "starless";
-  return null;
+  if (sys.suns.some((s) => Math.hypot(s.x, s.y) > SUN_ESCAPE_RADIUS)) fates.push("starless");
+  return fates;
+}
+
+/**
+ * Every way of describing a death that holds, including ones that are true but
+ * not themselves lethal. A world dies of fire or cold; that its orbit was also
+ * long past saving is equally true, and gives pickFate an honest alternative
+ * to reach for rather than repeating the previous cause.
+ */
+function describeFates(planet: Planet, sys: System, lethal: CollapseCause[]): CollapseCause[] {
+  const radius = Math.hypot(planet.x, planet.y);
+  const wrecked = radius < planet.home * SURVIVABLE_BAND[0] || radius > planet.home * SURVIVABLE_BAND[1];
+  return wrecked ? [...lethal, "drift"] : lethal;
+}
+
+/**
+ * Choose which true fate to report, preferring not to repeat the last one.
+ *
+ * Only ever picks from causes that actually hold, so the notice never claims
+ * something that didn't happen. When the sole true fate is the one just
+ * reported it is used again — a run of identical deaths is better than a
+ * false description of one.
+ */
+function pickFate(fates: CollapseCause[], last: CollapseCause | null): CollapseCause {
+  return fates.find((f) => f !== last) ?? fates[0];
 }
 
 /** Knock the suns off the periodic solution. The Chaotic Era begins. */
@@ -462,23 +521,31 @@ function beginSettle(sys: System) {
   sys.eraElapsed = 0;
 }
 
-function resetInto(sys: System, civilization: number) {
+function resetInto(sys: System, civilization: number, cause: CollapseCause) {
   const from = sys.suns.map((s) => ({ ...s }));
   const heat = sys.heat;
   Object.assign(sys, createSystem(civilization));
-  // Heat is a property of the page, not of any one civilisation: it has to
-  // keep cooling across the reset rather than snapping to black.
+  // Heat and the last cause belong to the page, not to any one civilisation:
+  // heat has to keep cooling across the reset rather than snapping to black.
   sys.heat = heat;
+  sys.lastCause = cause;
 
-  // Orbit in from wherever chaos left the suns, so a new civilisation arrives
-  // without a jump cut — but only if they are still on screen. An ejected sun
-  // can be thousands of units out, and dragging it back across the whole frame
-  // looks like a glitch rather than a recovery.
-  if (from.every((s) => Math.hypot(s.x, s.y) <= SUN_ESCAPE_RADIUS)) {
-    beginSettle(sys);
-    for (let i = 0; i < sys.suns.length; i++) Object.assign(sys.suns[i], from[i]);
-    computeSunAccelerations(sys.suns);
+  // Always orbit in from wherever chaos left the suns, so a new civilisation
+  // arrives without a jump cut. A sun that was ejected is pulled back to the
+  // frame edge first and glides in from there — skipping the settle for those
+  // was what made an escaped sun snap the whole system back into place.
+  beginSettle(sys);
+  for (let i = 0; i < sys.suns.length; i++) {
+    const s = from[i];
+    const d = Math.hypot(s.x, s.y);
+    if (d > SETTLE_START_RADIUS) {
+      const k = SETTLE_START_RADIUS / d;
+      s.x *= k;
+      s.y *= k;
+    }
+    Object.assign(sys.suns[i], s);
   }
+  computeSunAccelerations(sys.suns);
 }
 
 /**
@@ -567,11 +634,12 @@ export function advance(
     // Worlds are only at risk once the suns are actually moving freely.
     if (!settling) {
       const home = sys.planets[0];
-      const homeFate = fateOf(home, sys);
-      if (homeFate) {
+      const homeFates = fatesOf(home, sys);
+      if (homeFates.length > 0) {
+        const cause = pickFate(describeFates(home, sys, homeFates), sys.lastCause);
         const destroyed = sys.civilization;
-        events.push({ type: "collapse", civilization: destroyed, cause: homeFate });
-        resetInto(sys, destroyed + 1);
+        events.push({ type: "collapse", civilization: destroyed, cause });
+        resetInto(sys, destroyed + 1, cause);
         events.push({ type: "era", era: "stable" });
         continue;
       }
@@ -579,7 +647,7 @@ export function advance(
       for (let i = 1; i < sys.planets.length; i++) {
         const world = sys.planets[i];
         if (!world.alive) continue;
-        if (fateOf(world, sys)) {
+        if (fatesOf(world, sys).length > 0) {
           world.alive = false;
           world.trail = [];
           events.push({
@@ -609,10 +677,13 @@ export function advance(
       // wild ellipse hasn't survived in any meaningful sense — it just hasn't
       // finished dying, and letting it through leaves it wandering far off
       // screen during what the UI is calling a Stable Era.
-      if (radius < home.home * 0.6 || radius > home.home * 1.5) {
+      if (radius < home.home * SURVIVABLE_BAND[0] || radius > home.home * SURVIVABLE_BAND[1]) {
+        // Whatever else is true of the world right now counts too, so a run of
+        // timeouts doesn't report "drift" over and over.
+        const cause = pickFate(describeFates(home, sys, [...fatesOf(home, sys), "drift"]), sys.lastCause);
         const destroyed = sys.civilization;
-        events.push({ type: "collapse", civilization: destroyed, cause: "drift" });
-        resetInto(sys, destroyed + 1);
+        events.push({ type: "collapse", civilization: destroyed, cause });
+        resetInto(sys, destroyed + 1, cause);
         events.push({ type: "era", era: "stable" });
         continue;
       }
