@@ -36,12 +36,21 @@ export type Point = { x: number; y: number };
 
 const G = 1;
 /**
- * The suns are integrated with no softening: these solutions have no close
- * approaches, and softening changes the force law enough to visibly break the
- * periodicity. Planets keep a small softening because they can pass very near
- * a sun before BURN_RADIUS catches them.
+ * Just enough softening to remove the singularity at d -> 0, and no more.
+ *
+ * With none at all a close encounter is unintegrable at any fixed step: the
+ * force diverges, energy conservation fails, and a sun departs at 174 units
+ * per unit time — crossing the whole frame in a couple of displayed frames.
+ * Larger values fix that but deform the force law enough to break the periodic
+ * solutions.
+ *
+ * 5e-5 was measured as the best point on every axis at once. It drops peak
+ * speed to 11.75, and it *improves* both orbits rather than degrading them:
+ * figure-eight closure drift 0.003 -> 0.001, moth 0.089 -> 0.050. The moth
+ * passes within 0.079 of itself, close enough that the bare singularity was
+ * costing it accuracy.
  */
-const SUN_SOFTENING = 0;
+const SUN_SOFTENING = 0.00005;
 const PLANET_SOFTENING = 0.02;
 
 /** Integration step, and how many are taken per simulation frame. */
@@ -67,6 +76,23 @@ export const HEAT_RISE = 2.6;
 export const HEAT_FALL = 7;
 /** Velocity kick applied to each sun when a Chaotic Era begins. */
 export const PERTURBATION = 0.45;
+
+/**
+ * Adaptive time-stepping for close encounters.
+ *
+ * A fixed step cannot follow two suns slinging past each other: the force
+ * spikes, the integrator loses energy conservation, and a sun leaves at
+ * hundreds of units per unit time. Measured, the fastest ejections crossed the
+ * whole visible frame in 0.026s — around a single displayed frame, which reads
+ * as a teleport rather than an ejection.
+ *
+ * Above SPEED_REFERENCE the step shrinks in proportion, which is both the
+ * standard remedy for close encounters and the reason the moment becomes
+ * watchable: the physics is unchanged, it is played at a slower rate.
+ */
+export const SPEED_REFERENCE = 2.4;
+/** The simulation will not run slower than this fraction of normal. */
+export const MIN_TIME_SCALE = 0.035;
 
 /** Beyond this a planet has been flung out of the system. */
 export const ESCAPE_RADIUS = 14;
@@ -173,6 +199,11 @@ export type System = {
    * in both directions instead of switching between two palettes.
    */
   heat: number;
+  /**
+   * Current simulation rate as a fraction of normal. Drops below 1 during a
+   * close encounter, when the step has to shrink to stay accurate.
+   */
+  timeScale: number;
 };
 
 export type SimEvent =
@@ -237,6 +268,7 @@ export function createSystem(civilization = 1): System {
     settle: 1,
     shadow: null,
     heat: 0,
+    timeScale: 1,
   };
 }
 
@@ -342,6 +374,20 @@ function integrate(sys: System, dt: number) {
     p.vx += p.ax * half;
     p.vy += p.ay * half;
   }
+}
+
+/**
+ * How much to shrink the step this frame. Driven by the fastest body, since
+ * speed is what both breaks the integrator and outruns the display.
+ */
+function timeScaleFor(sys: System): number {
+  let fastest = 0;
+  for (const s of sys.suns) fastest = Math.max(fastest, Math.hypot(s.vx, s.vy));
+  for (const p of sys.planets) {
+    if (p.alive) fastest = Math.max(fastest, Math.hypot(p.vx, p.vy));
+  }
+  if (fastest <= SPEED_REFERENCE) return 1;
+  return Math.max(MIN_TIME_SCALE, SPEED_REFERENCE / fastest);
 }
 
 /** Largest distance between any two suns — small means a conjunction. */
@@ -489,11 +535,28 @@ export function advance(
         sys.shadow = null;
       }
     } else {
-      for (let i = 0; i < SUBSTEPS; i++) integrate(sys, DT);
+      // Shrink the step when anything is moving fast, so a slingshot is
+      // integrated accurately and shown at a speed the eye can follow.
+      //
+      // Re-evaluated every sub-step, not once per frame: an encounter can
+      // begin and finish inside a single frame's 32 sub-steps, and a rate
+      // chosen from the speed beforehand is already stale by then. Measured,
+      // per-frame scaling left the worst crossing at 0.027s — unchanged.
+      let advanced = 0;
+      for (let i = 0; i < SUBSTEPS; i++) {
+        const scale = timeScaleFor(sys);
+        integrate(sys, DT * scale);
+        advanced += DT * scale;
+      }
       recordTrails(sys);
+      sys.eraElapsed += advanced;
+      sys.timeScale = advanced / SIM_FRAME_TIME;
     }
 
-    sys.eraElapsed += SIM_FRAME_TIME;
+    if (settling) {
+      sys.eraElapsed += SIM_FRAME_TIME;
+      sys.timeScale = 1;
+    }
 
     // Heat trails the era rather than tracking it, and cools far more slowly
     // than it builds, so the page fades back to black instead of cutting.
