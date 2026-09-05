@@ -130,6 +130,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     // Mirrors of the last values pushed into React, so we only setState on a
     // genuine change rather than every frame.
     let lastEra: Era = system.era;
+    let lastHeat = -1;
     let lastCivilization = system.civilization;
     let lastStabilised = pinned;
 
@@ -171,6 +172,14 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         lastEra = system.era;
         setEra(system.era);
       }
+
+      // Publish heat to CSS. Quantised to 1%, so a full fade costs at most a
+      // hundred style recalculations rather than one per frame.
+      const heat = Math.round(system.heat * 100) / 100;
+      if (heat !== lastHeat) {
+        lastHeat = heat;
+        document.documentElement.style.setProperty("--heat", String(heat));
+      }
       if (system.civilization !== lastCivilization) {
         lastCivilization = system.civilization;
         setCivilization(system.civilization);
@@ -207,12 +216,13 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Drive the ambient theme from one attribute on <html>, so every page can
-  // respond in CSS without threading state through each component.
+  // Exposed for anything that wants the discrete state. The palette does not
+  // use it — colour is driven continuously by --heat instead.
   useEffect(() => {
     document.documentElement.dataset.era = era;
     return () => {
       delete document.documentElement.dataset.era;
+      document.documentElement.style.removeProperty("--heat");
     };
   }, [era]);
 

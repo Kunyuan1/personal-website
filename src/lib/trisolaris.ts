@@ -55,8 +55,16 @@ export const SIM_HZ = 60;
 
 /** A Chaotic Era the home world survives ends after this much sim time. */
 export const CHAOS_MAX = 18;
-/** How long the suns take to ease back onto the periodic solution. */
-export const SETTLE_TIME = 3.2;
+/** How long the suns take to orbit back onto the periodic solution. */
+export const SETTLE_TIME = 5;
+
+/**
+ * Time constants for `heat`, the 0..1 value the whole site's colour derives
+ * from. Heat rises faster than it falls on purpose: chaos should arrive as an
+ * event and recede as a long cooling, rather than snapping back.
+ */
+export const HEAT_RISE = 2.6;
+export const HEAT_FALL = 7;
 /** Velocity kick applied to each sun when a Chaotic Era begins. */
 export const PERTURBATION = 0.45;
 
@@ -148,12 +156,23 @@ export type System = {
   civilization: number;
   /**
    * 1 while an era is running normally. Drops to 0 when an era ends and eases
-   * back to 1 over SETTLE_TIME, so the suns glide onto the periodic solution
-   * and new worlds fade in instead of appearing.
+   * back to 1 over SETTLE_TIME, while the suns orbit back onto the periodic
+   * solution and new worlds fade in instead of appearing.
    */
   settle: number;
-  /** Sun state to interpolate away from while settling. */
-  settleFrom: Body[] | null;
+  /**
+   * A shadow copy of the system running the periodic solution from its
+   * validated initial conditions. While settling, the real bodies are blended
+   * toward it — and because the shadow is itself orbiting, they curve back
+   * into formation rather than sliding there in straight lines.
+   */
+  shadow: { suns: Body[]; planets: Planet[] } | null;
+  /**
+   * 0 when cold, 1 at the height of a Chaotic Era. Everything the visitor sees
+   * change colour is driven from this one number, so the shift is continuous
+   * in both directions instead of switching between two palettes.
+   */
+  heat: number;
 };
 
 export type SimEvent =
@@ -216,7 +235,8 @@ export function createSystem(civilization = 1): System {
     eraElapsed: 0,
     civilization,
     settle: 1,
-    settleFrom: null,
+    shadow: null,
+    heat: 0,
   };
 }
 
@@ -252,6 +272,41 @@ function computePlanetAcceleration(planet: Body, suns: Body[]) {
     const inv = G / (d2 * Math.sqrt(d2));
     planet.ax += dx * inv;
     planet.ay += dy * inv;
+  }
+}
+
+/** Move `body` a fraction `w` of the way onto `target`, in place. */
+function blendToward(body: Body, target: Body, w: number) {
+  body.x += (target.x - body.x) * w;
+  body.y += (target.y - body.y) * w;
+  body.vx += (target.vx - body.vx) * w;
+  body.vy += (target.vy - body.vy) * w;
+}
+
+/** One velocity-Verlet step over a bare set of bodies — used by the shadow. */
+function integrateBodies(suns: Body[], planets: Body[], dt: number) {
+  const half = 0.5 * dt;
+  for (const s of suns) {
+    s.vx += s.ax * half;
+    s.vy += s.ay * half;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+  }
+  for (const p of planets) {
+    p.vx += p.ax * half;
+    p.vy += p.ay * half;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+  computeSunAccelerations(suns);
+  for (const p of planets) computePlanetAcceleration(p, suns);
+  for (const s of suns) {
+    s.vx += s.ax * half;
+    s.vy += s.ay * half;
+  }
+  for (const p of planets) {
+    p.vx += p.ax * half;
+    p.vy += p.ay * half;
   }
 }
 
@@ -345,9 +400,17 @@ function recordTrails(sys: System) {
   }
 }
 
-/** Begin easing the suns back onto the periodic solution. */
+/**
+ * Start the return to a Stable Era. A shadow system is spun up on the periodic
+ * solution and the real bodies are blended toward it over SETTLE_TIME.
+ */
 function beginSettle(sys: System) {
-  sys.settleFrom = sys.suns.map((s) => ({ ...s }));
+  const suns = sunsFor(sys.orbit);
+  computeSunAccelerations(suns);
+  const planets = planetsFor(sys.orbit);
+  for (const p of planets) computePlanetAcceleration(p, suns);
+
+  sys.shadow = { suns, planets };
   sys.settle = 0;
   sys.era = "stable";
   sys.eraElapsed = 0;
@@ -355,16 +418,20 @@ function beginSettle(sys: System) {
 
 function resetInto(sys: System, civilization: number) {
   const from = sys.suns.map((s) => ({ ...s }));
+  const heat = sys.heat;
   Object.assign(sys, createSystem(civilization));
+  // Heat is a property of the page, not of any one civilisation: it has to
+  // keep cooling across the reset rather than snapping to black.
+  sys.heat = heat;
 
-  // Glide in from wherever chaos left the suns, so a new civilisation arrives
-  // without a jump cut — but only if they are still on screen. A sun that has
-  // been ejected can be thousands of units out, and interpolating from there
-  // just hurls it across the frame.
-  const onScreen = from.every((s) => Math.hypot(s.x, s.y) <= SUN_ESCAPE_RADIUS);
-  if (onScreen) {
-    sys.settleFrom = from;
-    sys.settle = 0;
+  // Orbit in from wherever chaos left the suns, so a new civilisation arrives
+  // without a jump cut — but only if they are still on screen. An ejected sun
+  // can be thousands of units out, and dragging it back across the whole frame
+  // looks like a glitch rather than a recovery.
+  if (from.every((s) => Math.hypot(s.x, s.y) <= SUN_ESCAPE_RADIUS)) {
+    beginSettle(sys);
+    for (let i = 0; i < sys.suns.length; i++) Object.assign(sys.suns[i], from[i]);
+    computeSunAccelerations(sys.suns);
   }
 }
 
@@ -382,37 +449,57 @@ export function advance(
   for (let f = 0; f < frames; f++) {
     const settling = sys.settle < 1;
 
-    if (settling && sys.settleFrom) {
-      // Interpolate the suns onto the periodic solution. Freezing their
-      // integration while blending keeps the two from fighting each other.
+    if (settling && sys.shadow) {
+      const shadow = sys.shadow;
       sys.settle = Math.min(1, sys.settle + SIM_FRAME_TIME / SETTLE_TIME);
-      const t = sys.settle;
-      // Smoothstep, so it leaves and arrives without a visible corner.
-      const e = t * t * (3 - 2 * t);
-      const target = sunsFor(sys.orbit);
-      for (let i = 0; i < sys.suns.length; i++) {
-        sys.suns[i].x = sys.settleFrom[i].x + (target[i].x - sys.settleFrom[i].x) * e;
-        sys.suns[i].y = sys.settleFrom[i].y + (target[i].y - sys.settleFrom[i].y) * e;
-        sys.suns[i].vx = sys.settleFrom[i].vx + (target[i].vx - sys.settleFrom[i].vx) * e;
-        sys.suns[i].vy = sys.settleFrom[i].vy + (target[i].vy - sys.settleFrom[i].vy) * e;
-      }
-      computeSunAccelerations(sys.suns);
-      if (sys.settle >= 1) {
-        sys.settleFrom = null;
-        sys.sunTrails = [[], [], []];
-      }
-    }
 
-    // Nothing integrates while settling: the suns are being interpolated, and
-    // letting the worlds fall through that non-physical field leaves them off
-    // their validated trajectories by the time the era starts.
-    if (!settling) {
+      // Only the shadow integrates. Because it is running the periodic
+      // solution, chasing it drags the real bodies along curved paths that
+      // converge into the formation — they orbit home rather than sliding
+      // there — while staying bounded by the target the whole way.
+      //
+      // Letting the real bodies integrate as well does not work: a sun leaving
+      // a close encounter carries enough speed to cross the frame before any
+      // reasonable blend catches it, measured at 386 units against a limit of 6.
+      for (let i = 0; i < SUBSTEPS; i++) {
+        integrateBodies(shadow.suns, shadow.planets, DT);
+      }
+
+      const w = 1 - Math.exp(-SIM_FRAME_TIME / (SETTLE_TIME / 4));
+      for (let i = 0; i < sys.suns.length; i++) blendToward(sys.suns[i], shadow.suns[i], w);
+      sys.planets.forEach((planet, i) => {
+        if (planet.alive) blendToward(planet, shadow.planets[i], w);
+      });
+      computeSunAccelerations(sys.suns);
+      for (const p of sys.planets) {
+        if (p.alive) computePlanetAcceleration(p, sys.suns);
+      }
+
+      recordTrails(sys);
+
+      if (sys.settle >= 1) {
+        // Adopt the shadow outright. Whatever rounding the blend left behind,
+        // the era now begins from exactly the validated initial conditions.
+        sys.suns = shadow.suns;
+        sys.planets.forEach((planet, i) => {
+          if (!planet.alive) return;
+          const trail = planet.trail;
+          Object.assign(planet, shadow.planets[i], { alive: true, trail });
+        });
+        sys.shadow = null;
+      }
+    } else {
       for (let i = 0; i < SUBSTEPS; i++) integrate(sys, DT);
       recordTrails(sys);
-    } else {
-      recordSunTrails(sys);
     }
+
     sys.eraElapsed += SIM_FRAME_TIME;
+
+    // Heat trails the era rather than tracking it, and cools far more slowly
+    // than it builds, so the page fades back to black instead of cutting.
+    const target = sys.era === "chaotic" ? 1 : 0;
+    const tau = target > sys.heat ? HEAT_RISE : HEAT_FALL;
+    sys.heat += (target - sys.heat) * (1 - Math.exp(-SIM_FRAME_TIME / tau));
 
     // Worlds are only at risk once the suns are actually moving freely.
     if (!settling) {

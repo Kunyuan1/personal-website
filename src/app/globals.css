@@ -6,48 +6,49 @@
    ground, enormous negative space, and three accents — one per sun
    in the Trisolaran system.
    --------------------------------------------------------------- */
-:root {
-  --void: #05060a;
-  --deep: #080b12;
-  --surface: #0d111b;
-  --raised: #131826;
+/* ---------------------------------------------------------------
+   The palette is a single continuous mix between a cold state and a
+   red-hot one, driven by --heat.
 
-  --ink: #e9ecf4;
-  --muted: #98a0b4;
-  --faint: #737c92;
-  --line: #1c2231;
-  --line-bright: #2a3247;
+   EraProvider writes --heat every frame from the simulation, so the shift
+   is animated by the system itself rather than by switching between two
+   palettes and hoping CSS transitions cover the gap. They didn't: only the
+   handful of properties with an explicit transition eased, and every card,
+   border and label snapped.
+
+   Only the ambient layer moves. Body text keeps its position and its
+   contrast, because someone reading about a project should never be
+   interrupted by the weather.
+   --------------------------------------------------------------- */
+@property --heat {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+:root {
+  --heat: 0;
+  --hot: calc(var(--heat) * 100%);
+
+  /* SystemCanvas paints the same two ground values (see CANVAS_GROUND) so the
+     hero never sits as a cold rectangle in the middle of a warm page. */
+  --void: color-mix(in oklab, #05060a, #1b0a0a var(--hot));
+  --deep: color-mix(in oklab, #080b12, #200d0d var(--hot));
+  --surface: color-mix(in oklab, #0d111b, #271113 var(--hot));
+  --raised: color-mix(in oklab, #131826, #301719 var(--hot));
+
+  --ink: color-mix(in oklab, #e9ecf4, #f6ecec var(--hot));
+  --muted: color-mix(in oklab, #98a0b4, #c6a9a9 var(--hot));
+  --faint: color-mix(in oklab, #737c92, #a58585 var(--hot));
+  --line: color-mix(in oklab, #1c2231, #452627 var(--hot));
+  --line-bright: color-mix(in oklab, #2a3247, #603435 var(--hot));
 
   /* The three suns. */
   --sun-a: #e6a94c; /* amber   — the steady one */
   --sun-b: #7fb2ff; /* blue    — the distant one */
   --sun-c: #d4544a; /* crimson — the dangerous one */
 
-  --accent: var(--sun-a);
-}
-
-/* ---------------------------------------------------------------
-   Chaotic Era.
-
-   EraProvider sets data-era on <html>, so the whole site shifts at once.
-   Only the ambient layer changes — accent, lines, the crimson wash. Body
-   text keeps its colour, its position and its contrast, because someone
-   reading about a project should never be interrupted by the weather.
-   --------------------------------------------------------------- */
-:root[data-era="chaotic"] {
-  /* The ground itself goes red-hot. SystemCanvas paints the same two values
-     (see CANVAS_GROUND there) so the hero doesn't sit as a cold rectangle in
-     the middle of a warm page. */
-  --void: #1b0a0a;
-  --deep: #200d0d;
-  --surface: #271113;
-  --raised: #301719;
-
-  --accent: var(--sun-c);
-  --line: #452627;
-  --line-bright: #603435;
-  --muted: #c6a9a9;
-  --faint: #a58585;
+  --accent: color-mix(in oklab, var(--sun-a), var(--sun-c) var(--hot));
 }
 
 @theme inline {
@@ -81,7 +82,6 @@
 
   body {
     background-color: var(--void);
-    transition: background-color 1600ms ease;
     color: var(--ink);
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
     text-wrap: pretty;
@@ -104,17 +104,6 @@
   ::selection {
     background-color: var(--sun-a);
     color: var(--void);
-  }
-
-  /* Ease the era shift so it reads as weather, not a jump cut. */
-  a,
-  button,
-  .eyebrow,
-  dt {
-    transition:
-      color 1200ms ease,
-      border-color 1200ms ease,
-      background-color 1200ms ease;
   }
 
   :focus-visible {
@@ -172,15 +161,10 @@
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    opacity: 0;
-    transition: opacity 1600ms ease;
+    opacity: var(--heat);
     background:
       radial-gradient(130% 90% at 50% 0%, rgba(226, 96, 78, 0.3), transparent 72%),
       radial-gradient(110% 70% at 50% 100%, rgba(178, 52, 44, 0.22), transparent 74%);
-  }
-
-  :root[data-era="chaotic"] .era-wash {
-    opacity: 1;
   }
 
   /* Distant starfield, used behind content sections. */

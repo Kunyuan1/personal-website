@@ -25,9 +25,6 @@ const CANVAS_GROUND = {
   chaotic: [27, 10, 10],
 } as const;
 
-/** Fraction of the remaining distance covered per frame, ~1.6s to converge. */
-const WARMTH_EASING = 0.026;
-
 /**
  * Draws the Trisolaran system. Owns no simulation state — EraProvider runs the
  * physics and calls back once per frame, so the canvas never triggers a React
@@ -48,7 +45,6 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     let scale = 1;
     let centerX = 0;
     let centerY = 0;
-    let warmth = 0;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -187,9 +183,9 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     const render = (system: System) => {
       rescale(system);
 
-      // Ease toward the era's ground colour rather than cutting to it, so the
-      // canvas warms in step with the CSS transition on the rest of the page.
-      warmth += ((system.era === "chaotic" ? 1 : 0) - warmth) * WARMTH_EASING;
+      // Heat comes from the simulation, the same number the CSS palette uses,
+      // so the canvas and the page can never drift out of step.
+      const warmth = system.heat;
       const cold = CANVAS_GROUND.stable;
       const hot = CANVAS_GROUND.chaotic;
       const r = Math.round(cold[0] + (hot[0] - cold[0]) * warmth);
