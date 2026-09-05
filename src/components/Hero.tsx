@@ -79,8 +79,9 @@ export default function Hero() {
         </div>
 
         <p className="mt-14 max-w-md font-mono text-[11px] leading-relaxed text-faint/80">
-          Three suns and one world, integrated live. The Stable Era is a real
-          periodic solution; perturb it and the planet is usually destroyed.
+          Three suns and their worlds, integrated live. The Stable Era is a real
+          periodic solution; the ringed world is Trisolaris, and a Chaotic Era
+          destroys it about four times in five.
         </p>
       </div>
     </section>

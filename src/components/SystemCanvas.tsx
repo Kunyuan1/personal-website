@@ -4,8 +4,10 @@ import { useEffect, useRef } from "react";
 
 import { useEra } from "@/components/EraProvider";
 import {
-  PLANET_COLOR,
+  HOME_COLOR,
   SUN_COLORS,
+  WORLD_COLOR,
+  type Planet,
   type Point,
   type System,
 } from "@/lib/trisolaris";
@@ -65,13 +67,14 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     };
 
     /**
-     * Framed from the planet's own orbit, because the two periodic solutions
-     * put it at different radii. The 1.25 margin keeps a Stable Era orbit well
-     * inside the frame; a Chaotic Era can still throw the planet past the edge,
-     * which is the point.
+     * Framed from the outermost world, because the two periodic solutions hold
+     * their worlds at very different radii. The small margin keeps Stable Era
+     * orbits inside the frame; a Chaotic Era can still throw a world past the
+     * edge, which is the point.
      */
     const rescale = (system: System) => {
-      const extent = system.orbit.planetOrbit * 1.25;
+      const outermost = system.orbit.planetRadii[system.orbit.planetRadii.length - 1];
+      const extent = outermost * 1.06;
       const wide = width >= 900;
       scale = wide
         ? Math.min((width * 0.4) / extent, (height * 0.46) / extent)
@@ -141,23 +144,44 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       ctx.fill();
     };
 
-    /** The planet is small, cool and dim — clearly not a star. */
-    const drawPlanet = (x: number, y: number) => {
-      const px = sx(x);
-      const py = sy(y);
+    /**
+     * Worlds are small and cool so they never read as stars. Trisolaris is
+     * drawn brighter, larger and with a ring around it; the others are grey
+     * and plain, so the eye finds the home world without needing a label.
+     */
+    const drawWorld = (planet: Planet, isHome: boolean, alpha: number) => {
+      const px = sx(planet.x);
+      const py = sy(planet.y);
+      const color = isHome ? HOME_COLOR : WORLD_COLOR;
+      const core = isHome ? 3.2 : 1.9;
+      const reach = isHome ? 13 : 7;
 
-      const halo = ctx.createRadialGradient(px, py, 0, px, py, 9);
-      halo.addColorStop(0, `${PLANET_COLOR}66`);
-      halo.addColorStop(1, `${PLANET_COLOR}00`);
+      ctx.globalAlpha = alpha;
+
+      const halo = ctx.createRadialGradient(px, py, 0, px, py, reach);
+      halo.addColorStop(0, `${color}${isHome ? "88" : "55"}`);
+      halo.addColorStop(1, `${color}00`);
       ctx.fillStyle = halo;
       ctx.beginPath();
-      ctx.arc(px, py, 9, 0, Math.PI * 2);
+      ctx.arc(px, py, reach, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = PLANET_COLOR;
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(px, py, 2.6, 0, Math.PI * 2);
+      ctx.arc(px, py, core, 0, Math.PI * 2);
       ctx.fill();
+
+      if (isHome) {
+        // A thin ring, the one mark no other body on screen carries.
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(px, py, core + 3.6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = 1;
     };
 
     const render = (system: System) => {
@@ -206,14 +230,31 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       // Additive, so trails bloom where the orbits cross.
       ctx.globalCompositeOperation = "lighter";
 
-      // The planet's path is drawn thinner and dimmer than the suns', so the
-      // eye reads the bright figure-eight first and the quiet orbit second.
-      drawTrail(system.planetTrail, PLANET_COLOR, 0.5, 1.1);
+      // Worlds fade in over the settle, so a new civilisation arrives rather
+      // than popping into place.
+      const worldAlpha = system.settle;
+
+      // Their paths are thinner and dimmer than the suns', so the eye reads
+      // the bright periodic orbit first and the quiet ones second.
+      system.planets.forEach((planet, i) => {
+        if (!planet.alive) return;
+        const isHome = i === 0;
+        drawTrail(
+          planet.trail,
+          isHome ? HOME_COLOR : WORLD_COLOR,
+          (isHome ? 0.5 : 0.28) * worldAlpha,
+          isHome ? 1.1 : 0.7,
+        );
+      });
+
       for (let i = 0; i < system.sunTrails.length; i++) {
         drawTrail(system.sunTrails[i], SUN_COLORS[i], 0.9, 2.2);
       }
 
-      drawPlanet(system.planet.x, system.planet.y);
+      system.planets.forEach((planet, i) => {
+        if (planet.alive) drawWorld(planet, i === 0, worldAlpha);
+      });
+
       for (let i = 0; i < system.suns.length; i++) {
         drawSun(system.suns[i].x, system.suns[i].y, SUN_COLORS[i]);
       }

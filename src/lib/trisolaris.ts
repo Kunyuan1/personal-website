@@ -1,25 +1,32 @@
 /* ---------------------------------------------------------------
    The Trisolaran system.
 
-   Three equal-mass suns under Newtonian gravity, plus one planet of
-   negligible mass. The suns are integrated with velocity Verlet; the planet
-   is a test particle, pulled by the suns but exerting no force back, which
-   keeps the suns' periodic solution exact.
+   Three equal-mass suns under Newtonian gravity, plus a handful of planets
+   of negligible mass. The suns are integrated with velocity Verlet; the
+   planets are test particles, pulled by the suns but exerting no force back,
+   which keeps the suns' periodic solution exact.
+
+   In the novel the system began with twelve planets and the suns swallowed
+   eleven of them, leaving only Trisolaris. Here each civilisation starts
+   with a few worlds; the Chaotic Eras take them one at a time, and the
+   civilisation ends when the home world itself is destroyed.
 
    Stable Era  — the suns run a genuine periodic solution, so the orbit
-                 closes on itself and the planet's wide orbit is nearly
-                 circular.
-   Chaotic Era — the suns are perturbed. The orbit stops closing, and the
-                 planet is usually destroyed.
+                 closes on itself and the worlds hold their paths.
+   Chaotic Era — the suns are perturbed. The orbit stops closing and the
+                 worlds are torn out of their orbits.
 
-   A civilisation ends when the planet is destroyed, and the cause is read
-   out of the simulation state rather than chosen at random.
+   Two honest caveats:
 
-   One honest caveat: a genuinely chaotic three-body system never returns to
-   a periodic orbit on its own. So when a civilisation *survives* a Chaotic
-   Era, the system is re-seeded to represent the next Stable Era arriving.
-   Everything inside an era is real integration; that re-seed is the one
-   narrative device.
+   1. A genuinely chaotic three-body system never returns to a periodic
+      orbit on its own. When an era ends, the suns are eased back onto the
+      periodic solution over SETTLE_TIME rather than snapping — smooth, but
+      it is a narrative device, not physics.
+   2. Planetary orbits have to sit well outside the suns. Anything closer
+      than about 3x the suns' own reach is ejected or swallowed within a
+      single Stable Era; the innermost radius here is the closest one
+      measured to survive. The gap is real, and it is exactly why Trisolaris
+      is such a miserable place to live.
    --------------------------------------------------------------- */
 
 export type Era = "stable" | "chaotic";
@@ -31,8 +38,8 @@ const G = 1;
 /**
  * The suns are integrated with no softening: these solutions have no close
  * approaches, and softening changes the force law enough to visibly break the
- * periodicity. The planet keeps a small softening because it can pass very
- * near a sun before BURN_RADIUS catches it.
+ * periodicity. Planets keep a small softening because they can pass very near
+ * a sun before BURN_RADIUS catches them.
  */
 const SUN_SOFTENING = 0;
 const PLANET_SOFTENING = 0.02;
@@ -46,38 +53,42 @@ export const SIM_FRAME_TIME = DT * SUBSTEPS;
 /** Simulation frames per second of real time, independent of display rate. */
 export const SIM_HZ = 60;
 
-/** A Chaotic Era the planet survives ends after this much simulation time. */
-export const CHAOS_MAX = 9;
+/** A Chaotic Era the home world survives ends after this much sim time. */
+export const CHAOS_MAX = 18;
+/** How long the suns take to ease back onto the periodic solution. */
+export const SETTLE_TIME = 3.2;
 /** Velocity kick applied to each sun when a Chaotic Era begins. */
-export const PERTURBATION = 0.7;
+export const PERTURBATION = 0.45;
 
-/** Beyond this the planet has been flung out of the system. */
-export const ESCAPE_RADIUS = 12;
+/** Beyond this a planet has been flung out of the system. */
+export const ESCAPE_RADIUS = 14;
 /**
  * Beyond this a sun has escaped and the system has come apart. Without this
- * check the suns wander to hundreds of world units during a Chaotic Era and
- * simply leave the frame.
+ * check the suns wander to hundreds of world units and leave the frame.
  */
 export const SUN_ESCAPE_RADIUS = 6;
-/** Inside this of any sun, the planet is consumed. */
+/** Inside this of any sun, a planet is consumed. */
 export const BURN_RADIUS = 0.22;
 /** Suns closer together than this count as a conjunction — a tri-solar day. */
 export const SYZYGY_SPREAD = 0.75;
-/** How near the planet must be to a conjunction to be cooked by it. */
+/** How near the home world must be to a conjunction to be cooked by it. */
 export const SYZYGY_RANGE = 1.7;
 
 export const SUN_COLORS = ["#e6a94c", "#7fb2ff", "#d4544a"] as const;
-export const PLANET_COLOR = "#9fb4c9";
+/** The home world. Deliberately the brightest, coolest thing on screen. */
+export const HOME_COLOR = "#bcd3e8";
+/** Every other world: dimmer and greyer, so Trisolaris reads first. */
+export const WORLD_COLOR = "#6b7183";
 
 /**
  * Periodic solutions for three equal masses, in the collinear parameterisation
  *   r1 = (-1,0), r2 = (1,0), r3 = (0,0);  v1 = v2 = (vx,vy);  v3 = -2(vx,vy)
  *
- * Only solutions verified here are included. Both close to within 0.006 over
- * three periods under this integrator. `planetOrbit` was found by sweeping
- * radii and keeping one where the planet stays on a near-circular path for a
- * whole Stable Era: the figure-eight holds to a spread of x1.00 at 3.4, and
- * the moth to x1.16 at 4.4. Radii between are markedly worse for both.
+ * `planetRadii[0]` is Trisolaris. Every radius here was measured over five
+ * Stable Eras and kept only if the orbit stayed bound; the gaps between them
+ * are not aesthetic, they are the radii that survive. The figure-eight holds
+ * worlds from 3.0 outward, the moth only from 4.6, which is why its system
+ * looks so much wider.
  */
 export type Orbit = {
   id: string;
@@ -86,7 +97,7 @@ export type Orbit = {
   vx: number;
   vy: number;
   period: number;
-  planetOrbit: number;
+  planetRadii: number[];
   /** How long this orbit's Stable Era runs, in simulation time. */
   stableDuration: number;
 };
@@ -99,7 +110,7 @@ export const ORBITS: readonly Orbit[] = [
     vx: 0.3471128135672417,
     vy: 0.5327261568568347,
     period: 6.3259,
-    planetOrbit: 3.4,
+    planetRadii: [3.0, 3.6, 4.2],
     stableDuration: 16,
   },
   {
@@ -109,31 +120,46 @@ export const ORBITS: readonly Orbit[] = [
     vx: 0.46444,
     vy: 0.39606,
     period: 14.8939,
-    planetOrbit: 4.4,
+    planetRadii: [4.6, 6.0],
     stableDuration: 20,
   },
 ];
 
 export type CollapseCause = "fire" | "cold" | "starless" | "syzygy" | "drift";
 
+export type Planet = Body & {
+  /** The radius this world was placed at. */
+  home: number;
+  alive: boolean;
+  trail: Point[];
+};
+
 export type System = {
   orbit: Orbit;
   suns: Body[];
-  planet: Body;
+  /** Index 0 is Trisolaris; the rest are the worlds it will outlive. */
+  planets: Planet[];
   sunTrails: Point[][];
-  planetTrail: Point[];
-  /** Exactly one period, so the trail closes on itself instead of doubling. */
   sunTrailLength: number;
   planetTrailLength: number;
   era: Era;
   /** Simulation time spent in the current era. */
   eraElapsed: number;
   civilization: number;
+  /**
+   * 1 while an era is running normally. Drops to 0 when an era ends and eases
+   * back to 1 over SETTLE_TIME, so the suns glide onto the periodic solution
+   * and new worlds fade in instead of appearing.
+   */
+  settle: number;
+  /** Sun state to interpolate away from while settling. */
+  settleFrom: Body[] | null;
 };
 
 export type SimEvent =
   | { type: "era"; era: Era }
-  | { type: "collapse"; civilization: number; cause: CollapseCause };
+  | { type: "collapse"; civilization: number; cause: CollapseCause }
+  | { type: "worldLost"; remaining: number };
 
 function sunsFor(orbit: Orbit): Body[] {
   return [
@@ -143,11 +169,23 @@ function sunsFor(orbit: Orbit): Body[] {
   ];
 }
 
-function planetFor(orbit: Orbit): Body {
-  // Circular velocity for the combined mass of all three suns, treating them
-  // as a single point mass — a good approximation this far out.
-  const v = Math.sqrt((G * 3) / orbit.planetOrbit);
-  return { x: orbit.planetOrbit, y: 0, vx: 0, vy: v, ax: 0, ay: 0 };
+function planetsFor(orbit: Orbit): Planet[] {
+  // Spread the starting angles so the worlds don't line up like a diagram.
+  return orbit.planetRadii.map((home, i) => {
+    const angle = (i / orbit.planetRadii.length) * Math.PI * 2;
+    const v = Math.sqrt((G * 3) / home);
+    return {
+      x: home * Math.cos(angle),
+      y: home * Math.sin(angle),
+      vx: -v * Math.sin(angle),
+      vy: v * Math.cos(angle),
+      ax: 0,
+      ay: 0,
+      home,
+      alive: true,
+      trail: [],
+    };
+  });
 }
 
 /** Each civilisation inherits a different periodic solution, in rotation. */
@@ -159,25 +197,26 @@ export function createSystem(civilization = 1): System {
   const orbit = orbitForCivilization(civilization);
   const suns = sunsFor(orbit);
   computeSunAccelerations(suns);
-  const planet = planetFor(orbit);
-  computePlanetAcceleration(planet, suns);
+  const planets = planetsFor(orbit);
+  for (const p of planets) computePlanetAcceleration(p, suns);
 
-  const planetPeriod = (2 * Math.PI * orbit.planetOrbit) / Math.sqrt(3 / orbit.planetOrbit);
-  // Only part of an orbit: a full one closes into a ring wide enough to reach
-  // across the hero and collide with the text.
-  const planetTrailSpan = planetPeriod * 0.34;
+  const home = orbit.planetRadii[0];
+  const homePeriod = (2 * Math.PI * home) / Math.sqrt(3 / home);
 
   return {
     orbit,
     suns,
-    planet,
+    planets,
     sunTrails: [[], [], []],
-    planetTrail: [],
     sunTrailLength: Math.round(orbit.period / SIM_FRAME_TIME),
-    planetTrailLength: Math.round(planetTrailSpan / SIM_FRAME_TIME),
+    // Part of an orbit rather than all of it: a full one closes into a ring
+    // wide enough to reach across the hero and collide with the text.
+    planetTrailLength: Math.round((homePeriod * 0.34) / SIM_FRAME_TIME),
     era: "stable",
     eraElapsed: 0,
     civilization,
+    settle: 1,
+    settleFrom: null,
   };
 }
 
@@ -202,7 +241,7 @@ function computeSunAccelerations(suns: Body[]) {
   }
 }
 
-/** The planet is massless: the suns pull it, it pulls nothing. */
+/** Planets are massless: the suns pull them, they pull nothing. */
 function computePlanetAcceleration(planet: Body, suns: Body[]) {
   planet.ax = 0;
   planet.ay = 0;
@@ -226,21 +265,28 @@ function integrate(sys: System, dt: number) {
     s.x += s.vx * dt;
     s.y += s.vy * dt;
   }
-  const p = sys.planet;
-  p.vx += p.ax * half;
-  p.vy += p.ay * half;
-  p.x += p.vx * dt;
-  p.y += p.vy * dt;
+  for (const p of sys.planets) {
+    if (!p.alive) continue;
+    p.vx += p.ax * half;
+    p.vy += p.ay * half;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
 
   computeSunAccelerations(sys.suns);
-  computePlanetAcceleration(p, sys.suns);
+  for (const p of sys.planets) {
+    if (p.alive) computePlanetAcceleration(p, sys.suns);
+  }
 
   for (const s of sys.suns) {
     s.vx += s.ax * half;
     s.vy += s.ay * half;
   }
-  p.vx += p.ax * half;
-  p.vy += p.ay * half;
+  for (const p of sys.planets) {
+    if (!p.alive) continue;
+    p.vx += p.ax * half;
+    p.vy += p.ay * half;
+  }
 }
 
 /** Largest distance between any two suns — small means a conjunction. */
@@ -255,21 +301,20 @@ function sunSpread(suns: Body[]): number {
 }
 
 /**
- * Why this world died, read from the state at the moment of destruction
- * rather than picked at random.
+ * Why a world died, read from the state at the moment of destruction rather
+ * than picked at random. Returns null if it is still alive.
  */
-function causeOfDeath(sys: System): CollapseCause | null {
-  const p = sys.planet;
-  const nearest = Math.min(...sys.suns.map((s) => Math.hypot(s.x - p.x, s.y - p.y)));
-  const spread = sunSpread(sys.suns);
+function fateOf(planet: Planet, sys: System): CollapseCause | null {
+  const nearest = Math.min(
+    ...sys.suns.map((s) => Math.hypot(s.x - planet.x, s.y - planet.y)),
+  );
 
   // A tri-solar day: all three suns bunched together with the world close by.
   // It doesn't have to fall into one of them to be cooked.
-  if (spread < SYZYGY_SPREAD && nearest < SYZYGY_RANGE) return "syzygy";
-
+  if (sunSpread(sys.suns) < SYZYGY_SPREAD && nearest < SYZYGY_RANGE) return "syzygy";
   if (nearest < BURN_RADIUS) return "fire";
-  if (Math.hypot(p.x, p.y) > ESCAPE_RADIUS) return "cold";
-  // A sun escaping strands the world in the dark just as surely.
+  if (Math.hypot(planet.x, planet.y) > ESCAPE_RADIUS) return "cold";
+  // A sun escaping strands every world in the dark just as surely.
   if (sys.suns.some((s) => Math.hypot(s.x, s.y) > SUN_ESCAPE_RADIUS)) return "starless";
   return null;
 }
@@ -283,34 +328,49 @@ export function destabilise(sys: System, rand: () => number = Math.random) {
   computeSunAccelerations(sys.suns);
 }
 
-function recordTrails(sys: System) {
+function recordSunTrails(sys: System) {
   for (let i = 0; i < sys.suns.length; i++) {
     const t = sys.sunTrails[i];
     t.push({ x: sys.suns[i].x, y: sys.suns[i].y });
     if (t.length > sys.sunTrailLength) t.shift();
   }
-  sys.planetTrail.push({ x: sys.planet.x, y: sys.planet.y });
-  if (sys.planetTrail.length > sys.planetTrailLength) sys.planetTrail.shift();
+}
+
+function recordTrails(sys: System) {
+  recordSunTrails(sys);
+  for (const p of sys.planets) {
+    if (!p.alive) continue;
+    p.trail.push({ x: p.x, y: p.y });
+    if (p.trail.length > sys.planetTrailLength) p.trail.shift();
+  }
+}
+
+/** Begin easing the suns back onto the periodic solution. */
+function beginSettle(sys: System) {
+  sys.settleFrom = sys.suns.map((s) => ({ ...s }));
+  sys.settle = 0;
+  sys.era = "stable";
+  sys.eraElapsed = 0;
 }
 
 function resetInto(sys: System, civilization: number) {
-  const fresh = createSystem(civilization);
-  sys.orbit = fresh.orbit;
-  sys.suns = fresh.suns;
-  sys.planet = fresh.planet;
-  sys.sunTrails = fresh.sunTrails;
-  sys.planetTrail = fresh.planetTrail;
-  sys.sunTrailLength = fresh.sunTrailLength;
-  sys.planetTrailLength = fresh.planetTrailLength;
-  sys.era = "stable";
-  sys.eraElapsed = 0;
-  sys.civilization = civilization;
+  const from = sys.suns.map((s) => ({ ...s }));
+  Object.assign(sys, createSystem(civilization));
+
+  // Glide in from wherever chaos left the suns, so a new civilisation arrives
+  // without a jump cut — but only if they are still on screen. A sun that has
+  // been ejected can be thousands of units out, and interpolating from there
+  // just hurls it across the frame.
+  const onScreen = from.every((s) => Math.hypot(s.x, s.y) <= SUN_ESCAPE_RADIUS);
+  if (onScreen) {
+    sys.settleFrom = from;
+    sys.settle = 0;
+  }
 }
 
 /**
  * Advance the system by whole simulation frames, returning any events that
- * occurred. Mutates `sys` in place, including replacing its contents when a
- * civilisation collapses.
+ * occurred. Mutates `sys` in place.
  */
 export function advance(
   sys: System,
@@ -320,21 +380,68 @@ export function advance(
   const events: SimEvent[] = [];
 
   for (let f = 0; f < frames; f++) {
-    for (let i = 0; i < SUBSTEPS; i++) integrate(sys, DT);
-    sys.eraElapsed += SIM_FRAME_TIME;
-    recordTrails(sys);
+    const settling = sys.settle < 1;
 
-    const cause = causeOfDeath(sys);
-    if (cause) {
-      const destroyed = sys.civilization;
-      events.push({ type: "collapse", civilization: destroyed, cause });
-      resetInto(sys, destroyed + 1);
-      events.push({ type: "era", era: "stable" });
-      continue;
+    if (settling && sys.settleFrom) {
+      // Interpolate the suns onto the periodic solution. Freezing their
+      // integration while blending keeps the two from fighting each other.
+      sys.settle = Math.min(1, sys.settle + SIM_FRAME_TIME / SETTLE_TIME);
+      const t = sys.settle;
+      // Smoothstep, so it leaves and arrives without a visible corner.
+      const e = t * t * (3 - 2 * t);
+      const target = sunsFor(sys.orbit);
+      for (let i = 0; i < sys.suns.length; i++) {
+        sys.suns[i].x = sys.settleFrom[i].x + (target[i].x - sys.settleFrom[i].x) * e;
+        sys.suns[i].y = sys.settleFrom[i].y + (target[i].y - sys.settleFrom[i].y) * e;
+        sys.suns[i].vx = sys.settleFrom[i].vx + (target[i].vx - sys.settleFrom[i].vx) * e;
+        sys.suns[i].vy = sys.settleFrom[i].vy + (target[i].vy - sys.settleFrom[i].vy) * e;
+      }
+      computeSunAccelerations(sys.suns);
+      if (sys.settle >= 1) {
+        sys.settleFrom = null;
+        sys.sunTrails = [[], [], []];
+      }
+    }
+
+    // Nothing integrates while settling: the suns are being interpolated, and
+    // letting the worlds fall through that non-physical field leaves them off
+    // their validated trajectories by the time the era starts.
+    if (!settling) {
+      for (let i = 0; i < SUBSTEPS; i++) integrate(sys, DT);
+      recordTrails(sys);
+    } else {
+      recordSunTrails(sys);
+    }
+    sys.eraElapsed += SIM_FRAME_TIME;
+
+    // Worlds are only at risk once the suns are actually moving freely.
+    if (!settling) {
+      const home = sys.planets[0];
+      const homeFate = fateOf(home, sys);
+      if (homeFate) {
+        const destroyed = sys.civilization;
+        events.push({ type: "collapse", civilization: destroyed, cause: homeFate });
+        resetInto(sys, destroyed + 1);
+        events.push({ type: "era", era: "stable" });
+        continue;
+      }
+
+      for (let i = 1; i < sys.planets.length; i++) {
+        const world = sys.planets[i];
+        if (!world.alive) continue;
+        if (fateOf(world, sys)) {
+          world.alive = false;
+          world.trail = [];
+          events.push({
+            type: "worldLost",
+            remaining: sys.planets.filter((p) => p.alive).length,
+          });
+        }
+      }
     }
 
     if (sys.era === "stable") {
-      if (sys.eraElapsed >= sys.orbit.stableDuration) {
+      if (!settling && sys.eraElapsed >= sys.orbit.stableDuration) {
         destabilise(sys, rand);
         sys.era = "chaotic";
         sys.eraElapsed = 0;
@@ -345,14 +452,14 @@ export function advance(
 
     // Chaotic Era: long enough has passed for it to break, one way or another.
     if (sys.eraElapsed >= CHAOS_MAX) {
-      const radius = Math.hypot(sys.planet.x, sys.planet.y);
-      const home = sys.orbit.planetOrbit;
+      const home = sys.planets[0];
+      const radius = Math.hypot(home.x, home.y);
 
-      // Surviving means the orbit is still recoverable. A planet flung onto a
+      // Surviving means the orbit is still recoverable. A world flung onto a
       // wild ellipse hasn't survived in any meaningful sense — it just hasn't
       // finished dying, and letting it through leaves it wandering far off
       // screen during what the UI is calling a Stable Era.
-      if (radius < home * 0.6 || radius > home * 1.5) {
+      if (radius < home.home * 0.6 || radius > home.home * 1.5) {
         const destroyed = sys.civilization;
         events.push({ type: "collapse", civilization: destroyed, cause: "drift" });
         resetInto(sys, destroyed + 1);
@@ -360,11 +467,18 @@ export function advance(
         continue;
       }
 
-      // The civilisation survived: re-seed for the next Stable Era, keeping the
-      // civilisation number. The planet returns to the canonical starting angle
-      // because stability depends on its phase relative to the suns, so an
-      // arbitrary angle is an unvalidated initial condition.
-      resetInto(sys, sys.civilization);
+      // The civilisation survived. Ease back onto the periodic solution and
+      // return the surviving worlds to their *canonical* starting angles, not
+      // wherever chaos left them. Stability depends on a world's phase
+      // relative to the suns, so an arbitrary angle is an unvalidated initial
+      // condition — measured, those wander far enough to be destroyed during
+      // the following Stable Era, which is not survival in any useful sense.
+      const canonical = planetsFor(sys.orbit);
+      sys.planets.forEach((p, i) => {
+        if (!p.alive) return;
+        Object.assign(p, canonical[i], { alive: true, trail: [] });
+      });
+      beginSettle(sys);
       events.push({ type: "era", era: "stable" });
     }
   }
