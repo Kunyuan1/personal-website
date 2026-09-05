@@ -24,7 +24,7 @@ const STABILISED_KEY = "trisolaris.stabilised";
 /** Most simulation time a single animation frame may catch up on, in seconds. */
 const MAX_CATCHUP = 0.5;
 /** How long the collapse notice stays on screen. */
-const COLLAPSE_NOTICE_MS = 5200;
+const COLLAPSE_NOTICE_MS = 9200;
 
 type Renderer = (system: System) => void;
 

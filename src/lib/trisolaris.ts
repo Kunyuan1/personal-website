@@ -76,6 +76,14 @@ export const HEAT_RISE = 2.6;
 export const HEAT_FALL = 7;
 /** Velocity kick applied to each sun when a Chaotic Era begins. */
 export const PERTURBATION = 0.8;
+/**
+ * The kick is spread over this much simulation time rather than applied as an
+ * impulse. Delivered in one frame it is a visible kink: the suns are on a
+ * closed orbit and then, between two frames, they are not.
+ */
+export const PERTURB_RAMP = 1.4;
+/** How long a destroyed world and its trail take to fade out. */
+export const WORLD_FADE_TIME = 1.6;
 
 /**
  * Adaptive time-stepping for close encounters.
@@ -93,13 +101,6 @@ export const PERTURBATION = 0.8;
 export const SPEED_REFERENCE = 2.4;
 /** The simulation will not run slower than this fraction of normal. */
 export const MIN_TIME_SCALE = 0.035;
-
-/**
- * A sun further out than this when a civilisation falls is pulled back to this
- * radius before the settle begins, so it glides in from the edge of the frame
- * rather than being dragged across the whole screen.
- */
-export const SETTLE_START_RADIUS = 5.5;
 
 /**
  * A planet is gone once it passes this multiple of the system's outermost
@@ -129,6 +130,14 @@ export const SUN_ESCAPE_RADIUS = 6;
  * escaped and died of cold already rather than waiting for the timeout.
  */
 export const SURVIVABLE_BAND: readonly [number, number] = [0.55, 1.72];
+
+/**
+ * A sun further out than this when a civilisation falls is pulled back before
+ * the settle begins. Set equal to SUN_ESCAPE_RADIUS, which is the furthest a
+ * sun ever gets, so in practice nothing is ever moved and the glide always
+ * starts from exactly where the sun was.
+ */
+export const SETTLE_START_RADIUS = SUN_ESCAPE_RADIUS;
 
 /** Inside this of any sun, a planet is consumed. */
 export const BURN_RADIUS = 0.22;
@@ -195,6 +204,8 @@ export type Planet = Body & {
   home: number;
   alive: boolean;
   trail: Point[];
+  /** 1 while present, easing to 0 once destroyed. */
+  fade: number;
 };
 
 export type System = {
@@ -235,6 +246,18 @@ export type System = {
   timeScale: number;
   /** The last cause reported, so a repeat can be avoided where possible. */
   lastCause: CollapseCause | null;
+  /**
+   * Worlds that have been destroyed, kept only to fade out. Not simulated.
+   * Without them a world and its trail blink out of existence the instant it
+   * dies, which is the most abrupt thing that can happen on screen.
+   */
+  ghosts: Planet[];
+  /**
+   * Velocity still to be delivered to each sun, and the time left to deliver
+   * it over. Spreading the kick keeps the start of a Chaotic Era continuous.
+   */
+  kick: { dvx: number; dvy: number }[] | null;
+  kickRemaining: number;
 };
 
 export type SimEvent =
@@ -265,6 +288,7 @@ function planetsFor(orbit: Orbit): Planet[] {
       home,
       alive: true,
       trail: [],
+      fade: 1,
     };
   });
 }
@@ -301,6 +325,9 @@ export function createSystem(civilization = 1): System {
     heat: 0,
     timeScale: 1,
     lastCause: null,
+    ghosts: [],
+    kick: null,
+    kickRemaining: 0,
   };
 }
 
@@ -479,13 +506,48 @@ function pickFate(fates: CollapseCause[], last: CollapseCause | null): CollapseC
   return fates.find((f) => f !== last) ?? fates[0];
 }
 
-/** Knock the suns off the periodic solution. The Chaotic Era begins. */
+/**
+ * Knock the suns off the periodic solution. The Chaotic Era begins.
+ *
+ * The kick is queued rather than applied: delivered as an impulse it puts a
+ * visible kink in three orbits at once, which is the one moment of the cycle
+ * the eye is already watching.
+ */
 export function destabilise(sys: System, rand: () => number = Math.random) {
-  for (const s of sys.suns) {
-    s.vx += (rand() - 0.5) * PERTURBATION;
-    s.vy += (rand() - 0.5) * PERTURBATION;
-  }
+  sys.kick = sys.suns.map(() => ({
+    dvx: (rand() - 0.5) * PERTURBATION,
+    dvy: (rand() - 0.5) * PERTURBATION,
+  }));
+  sys.kickRemaining = PERTURB_RAMP;
+}
+
+/** Deliver this frame's share of a queued perturbation. */
+function applyKick(sys: System, dt: number) {
+  if (!sys.kick || sys.kickRemaining <= 0) return;
+  const share = Math.min(1, dt / sys.kickRemaining);
+  sys.suns.forEach((sun, i) => {
+    const k = sys.kick![i];
+    sun.vx += k.dvx * share;
+    sun.vy += k.dvy * share;
+    k.dvx -= k.dvx * share;
+    k.dvy -= k.dvy * share;
+  });
+  sys.kickRemaining -= dt;
+  if (sys.kickRemaining <= 0) sys.kick = null;
   computeSunAccelerations(sys.suns);
+}
+
+/** Retire a world into the ghost list so it fades rather than vanishing. */
+function killWorld(sys: System, planet: Planet) {
+  planet.alive = false;
+  sys.ghosts.push({ ...planet, trail: planet.trail.slice(), fade: 1 });
+}
+
+/** Ease out every ghost, dropping the ones that have finished. */
+function decayGhosts(sys: System, dt: number) {
+  if (sys.ghosts.length === 0) return;
+  for (const g of sys.ghosts) g.fade -= dt / WORLD_FADE_TIME;
+  sys.ghosts = sys.ghosts.filter((g) => g.fade > 0);
 }
 
 function recordSunTrails(sys: System) {
@@ -524,7 +586,21 @@ function beginSettle(sys: System) {
 function resetInto(sys: System, civilization: number, cause: CollapseCause) {
   const from = sys.suns.map((s) => ({ ...s }));
   const heat = sys.heat;
+
+  // Everything still standing fades out rather than disappearing, and the sun
+  // trails carry over — clearing them made the figure-eight blink out of
+  // existence on every collapse.
+  const ghosts = [
+    ...sys.ghosts,
+    ...sys.planets
+      .filter((pl) => pl.alive)
+      .map((pl) => ({ ...pl, trail: pl.trail.slice(), fade: 1 })),
+  ];
+  const sunTrails = sys.sunTrails.map((t) => t.slice());
+
   Object.assign(sys, createSystem(civilization));
+  sys.ghosts = ghosts;
+  sys.sunTrails = sunTrails;
   // Heat and the last cause belong to the page, not to any one civilisation:
   // heat has to keep cooling across the reset rather than snapping to black.
   sys.heat = heat;
@@ -612,6 +688,7 @@ export function advance(
       let advanced = 0;
       for (let i = 0; i < SUBSTEPS; i++) {
         const scale = timeScaleFor(sys);
+        applyKick(sys, DT * scale);
         integrate(sys, DT * scale);
         advanced += DT * scale;
       }
@@ -624,6 +701,8 @@ export function advance(
       sys.eraElapsed += SIM_FRAME_TIME;
       sys.timeScale = 1;
     }
+
+    decayGhosts(sys, SIM_FRAME_TIME);
 
     // Heat trails the era rather than tracking it, and cools far more slowly
     // than it builds, so the page fades back to black instead of cutting.
@@ -648,8 +727,7 @@ export function advance(
         const world = sys.planets[i];
         if (!world.alive) continue;
         if (fatesOf(world, sys).length > 0) {
-          world.alive = false;
-          world.trail = [];
+          killWorld(sys, world);
           events.push({
             type: "worldLost",
             remaining: sys.planets.filter((p) => p.alive).length,

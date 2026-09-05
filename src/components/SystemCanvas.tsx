@@ -247,6 +247,14 @@ export default function SystemCanvas({ className = "" }: { className?: string })
         drawTrail(system.sunTrails[i], SUN_COLORS[i], 0.9, 2.2);
       }
 
+      // Worlds that have been destroyed fade out where they died rather than
+      // disappearing between two frames.
+      system.ghosts.forEach((ghost) => {
+        const alpha = Math.max(0, ghost.fade);
+        drawTrail(ghost.trail, WORLD_COLOR, 0.28 * alpha, 0.7);
+        drawWorld(ghost, false, alpha);
+      });
+
       system.planets.forEach((planet, i) => {
         if (planet.alive) drawWorld(planet, i === 0, worldAlpha);
       });
