@@ -36,7 +36,9 @@ export default function Hero() {
             <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${label.dot}`} />
           </span>
           <span className="text-faint">
-            <span className="cjk">文明</span> #{civilization}
+            <span className="cjk">文明</span>
+            <span className="ml-2 uppercase tracking-[0.16em]">Civilization</span>{" "}
+            #{civilization}
           </span>
           <span className="text-line-bright">·</span>
           <span className={label.color}>
@@ -81,7 +83,7 @@ export default function Hero() {
         <p className="mt-14 max-w-md font-mono text-[11px] leading-relaxed text-faint/80">
           Three suns and their worlds, integrated live. The Stable Era is a real
           periodic solution; the ringed world is Trisolaris, and a Chaotic Era
-          destroys it about four times in five.
+          destroys it more often than not.
         </p>
       </div>
     </section>
