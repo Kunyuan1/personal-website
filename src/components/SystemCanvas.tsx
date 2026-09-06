@@ -266,6 +266,37 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       // than popping into place.
       const worldAlpha = system.settle;
 
+      // The path each world is *meant* to be on, drawn from its `home` radius
+      // rather than from where it actually is. During a Chaotic Era the gap
+      // between the ring and the world is the whole point: it is how far chaos
+      // has thrown it.
+      //
+      // Faded by heat rather than by era. Heat is the continuous value the
+      // entire palette already runs on, so the rings recede as the page warms
+      // instead of switching off — keying this on the discrete era would put
+      // back exactly the snap that stripping `--heat` used to cause. They also
+      // stop being true the moment the suns are perturbed, which is the other
+      // reason not to leave them up.
+      //
+      // A world's orbit is circular only to within about 3%, measured over a
+      // Stable Era, which at this scale is a pixel or two — close enough for a
+      // guide, and the guide is gone by the time it would not be.
+      const ringAlpha = 0.16 * (1 - warmth) * worldAlpha;
+      if (ringAlpha > 0.002) {
+        ctx.lineWidth = 0.8;
+        for (const planet of system.planets) {
+          if (!planet.alive) continue;
+          // The home world's ring is brighter for the same reason its body is:
+          // the eye should find Trisolaris without needing a label.
+          ctx.strokeStyle = planet.isHome ? HOME_COLOR : WORLD_COLOR;
+          ctx.globalAlpha = ringAlpha * (planet.isHome ? 1.5 : 1);
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, planet.home * scale, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
       // Their paths are thinner and dimmer than the suns', so the eye reads
       // the bright periodic orbit first and the quiet ones second.
       system.planets.forEach((planet) => {
