@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Three suns">
+  <!--
+    Three equal-mass suns, in the three colours SUN_COLORS uses on the canvas,
+    on the same void the page sits on. Equal radii because the suns are equal
+    masses; a triangle rather than the collinear starting positions because at
+    16px three dots in a row read as an ellipsis.
+  -->
+  <rect width="32" height="32" rx="7" fill="#05060a"/>
+  <circle cx="16" cy="9.6" r="4.1" fill="#e6a94c"/>
+  <circle cx="9.6" cy="20.6" r="4.1" fill="#7fb2ff"/>
+  <circle cx="22.4" cy="20.6" r="4.1" fill="#d4544a"/>
+</svg>
