@@ -161,6 +161,17 @@ export const WORLD_COLOR = "#6b7183";
  * are not aesthetic, they are the radii that survive. The figure-eight holds
  * worlds from 3.0 outward, the moth only from 4.6, which is why its system
  * looks so much wider.
+ *
+ * Later worlds were interleaved between the existing radii rather than added
+ * beyond them, for two reasons. The frame is derived from the outermost radius
+ * (`outermost * 1.06` in SystemCanvas), so extending outward shrinks the suns
+ * on screen — the one thing on the page the eye is actually following. And the
+ * band inward of 3.0 is the one already known not to survive, so there is
+ * nowhere else to put them.
+ *
+ * Peak radius is the measure, not a symmetric band: these orbits are ellipses,
+ * and the figure-eight's home world dips to 0.784 of its radius every era
+ * while never exceeding 1.003 of it.
  */
 export type Orbit = {
   id: string;
@@ -182,7 +193,7 @@ export const ORBITS: readonly Orbit[] = [
     vx: 0.3471128135672417,
     vy: 0.5327261568568347,
     period: 6.3259,
-    planetRadii: [3.0, 3.6, 4.2],
+    planetRadii: [3.0, 3.3, 3.6, 3.9, 4.2],
     stableDuration: 16,
   },
   {
@@ -192,7 +203,7 @@ export const ORBITS: readonly Orbit[] = [
     vx: 0.46444,
     vy: 0.39606,
     period: 14.8939,
-    planetRadii: [4.6, 6.0],
+    planetRadii: [4.6, 5.05, 5.5, 6.0],
     stableDuration: 20,
   },
 ];
