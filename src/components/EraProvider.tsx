@@ -25,14 +25,25 @@ const STABILISED_KEY = "trisolaris.stabilised";
 const MAX_CATCHUP = 0.5;
 /** How long the collapse notice stays on screen. */
 const COLLAPSE_NOTICE_MS = 9200;
+/** Surviving has less to say, and stays up for less time saying it. */
+const SURVIVAL_NOTICE_MS = 6400;
 
 type Renderer = (system: System) => void;
+
+/**
+ * What just became of the current civilisation. A Chaotic Era resolves one way
+ * or the other and both are worth announcing — reporting only the deaths left
+ * a survival looking like a notice that had failed to appear.
+ */
+export type Notice =
+  | { kind: "collapse"; civilization: number; cause: CollapseCause }
+  | { kind: "survived"; civilization: number };
 
 type EraContextValue = {
   era: Era;
   civilization: number;
-  /** Set for a few seconds after a civilisation is destroyed. */
-  collapse: { civilization: number; cause: CollapseCause } | null;
+  /** Set for a few seconds after a Chaotic Era resolves, either way. */
+  notice: Notice | null;
   stabilised: boolean;
   setStabilised: (value: boolean) => void;
   /** Canvas components register here to be drawn each frame. */
@@ -57,10 +68,7 @@ export function useEra() {
 export default function EraProvider({ children }: { children: ReactNode }) {
   const [era, setEra] = useState<Era>("stable");
   const [civilization, setCivilization] = useState(1);
-  const [collapse, setCollapse] = useState<{
-    civilization: number;
-    cause: CollapseCause;
-  } | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [stabilised, setStabilisedState] = useState(false);
 
   const systemRef = useRef<System | null>(null);
@@ -161,16 +169,21 @@ export default function EraProvider({ children }: { children: ReactNode }) {
 
       for (let i = 0; i < frames; i++) {
         for (const event of advance(system, 1)) {
-          if (event.type !== "collapse") continue;
-          const destroyed = event.civilization;
-          setCollapse({ civilization: destroyed, cause: event.cause });
-          try {
-            localStorage.setItem(CIVILIZATION_KEY, String(destroyed + 1));
-          } catch {
-            // Non-persistent visitors simply restart at 1 next time.
+          if (event.type === "collapse") {
+            const destroyed = event.civilization;
+            setNotice({ kind: "collapse", civilization: destroyed, cause: event.cause });
+            try {
+              localStorage.setItem(CIVILIZATION_KEY, String(destroyed + 1));
+            } catch {
+              // Non-persistent visitors simply restart at 1 next time.
+            }
+            clearTimeout(noticeTimer);
+            noticeTimer = setTimeout(() => setNotice(null), COLLAPSE_NOTICE_MS);
+          } else if (event.type === "survived") {
+            setNotice({ kind: "survived", civilization: event.civilization });
+            clearTimeout(noticeTimer);
+            noticeTimer = setTimeout(() => setNotice(null), SURVIVAL_NOTICE_MS);
           }
-          clearTimeout(noticeTimer);
-          noticeTimer = setTimeout(() => setCollapse(null), COLLAPSE_NOTICE_MS);
         }
       }
 
@@ -247,7 +260,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       value={{
         era,
         civilization,
-        collapse,
+        notice,
         stabilised,
         setStabilised,
         registerRenderer,

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 
-import CollapseNotice from "@/components/CollapseNotice";
+import EraNotice from "@/components/EraNotice";
 import EraProvider from "@/components/EraProvider";
 import Footer from "@/components/Footer";
 import Nav from "@/components/Nav";
@@ -99,7 +99,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             {children}
           </main>
           <Footer />
-          <CollapseNotice />
+          <EraNotice />
         </EraProvider>
       </body>
     </html>

@@ -274,6 +274,12 @@ export type System = {
 export type SimEvent =
   | { type: "era"; era: Era }
   | { type: "collapse"; civilization: number; cause: CollapseCause }
+  /**
+   * The home world came through a Chaotic Era. Measured, 43% of them end this
+   * way, and without an event for it the outcome was reported by nothing —
+   * indistinguishable on screen from a death whose notice had failed.
+   */
+  | { type: "survived"; civilization: number }
   | { type: "worldLost"; remaining: number };
 
 function sunsFor(orbit: Orbit): Body[] {
@@ -820,6 +826,7 @@ export function advance(
         Object.assign(p, canonical[i], { alive: true, trail: [] });
       });
       beginSettle(sys);
+      events.push({ type: "survived", civilization: sys.civilization });
       events.push({ type: "era", era: "stable" });
     }
   }
