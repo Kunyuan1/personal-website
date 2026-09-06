@@ -16,7 +16,9 @@ export default function Footer() {
 
           <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
             <p className="font-mono text-xs text-faint">
-              <span className="cjk">文明</span> #{civilization}
+              <span className="cjk">文明</span>
+              <span className="ml-2 uppercase tracking-[0.16em]">Civilization</span>{" "}
+              #{civilization}
             </p>
 
             {/* Anyone who finds the era shifts distracting can switch them off,

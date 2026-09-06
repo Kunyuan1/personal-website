@@ -127,6 +127,8 @@ let deathsDuringStable = 0;
 let collapsesWithoutSettle = 0;
 let outerWorldsLost = 0;
 let deaths = 0;
+let survivals = 0;
+let unfinishedChaos = 0;
 let ghostsCreated = 0;
 let shortestTrailAfterCollapse = Infinity;
 let maxTrailExcess = 0;
@@ -165,6 +167,8 @@ for (const seed of [...SEEDS]) {
     for (const event of events) {
       if (event.type === "era") {
         if (event.era === "chaotic") chaoticEras++;
+      } else if (event.type === "survived") {
+        survivals++;
       } else if (event.type === "worldLost") {
         outerWorldsLost++;
         deaths++;
@@ -173,7 +177,7 @@ for (const seed of [...SEEDS]) {
         // failure class this harness exists to catch — went unnoticed for
         // everything except Trisolaris.
         if (stableBefore) deathsDuringStable++;
-      } else {
+      } else if (event.type === "collapse") {
         collapses++;
         deaths++;
         causeCounts[event.cause] = (causeCounts[event.cause] ?? 0) + 1;
@@ -188,6 +192,14 @@ for (const seed of [...SEEDS]) {
         noticeDelays.push(offScreenSince >= 0 ? simTime - offScreenSince : 0);
         previousCause = event.cause;
         offScreenSince = -1;
+      } else {
+        // Exhaustive on purpose. This chain used to end in a bare `else` that
+        // treated anything unrecognised as a collapse, so adding "survived" to
+        // SimEvent silently counted every survival as a death: mortality 100%
+        // and an `undefined` cause in the tally. Now a new event member fails
+        // to assign to `never` and the compiler names the file and line.
+        const unhandled: never = event;
+        throw new Error(`unhandled simulation event: ${JSON.stringify(unhandled)}`);
       }
     }
 
@@ -209,6 +221,11 @@ for (const seed of [...SEEDS]) {
         worstCrossing = Math.min(worstCrossing, (visible * 2) / (moved * SIM_HZ));
       }
     });
+
+    if (f === MINUTES_PER_SEED * 60 * SIM_HZ - 1 && sys.era === "chaotic") {
+      // The run stopped part-way through a Chaotic Era; it resolved neither way.
+      unfinishedChaos++;
+    }
 
     // Every world, not just Trisolaris. Checking `planets[0]` alone left the
     // other radii with no Stable-Era invariant at all: a world planted at a
@@ -243,6 +260,15 @@ record("all five causes occur", Object.keys(causeCounts).length, "5", Object.key
 record("consecutive repeats", `${repeats}/${collapses} (${repeatRate}%)`, "< 20%", repeatRate < 20);
 record("notice delay after leaving view", `mean ${toSeconds(meanDelay)}s`, "< 2.0s", toSeconds(meanDelay) < 2);
 record("mortality", `${mortality}%`, "40-80%", mortality >= 40 && mortality <= 80);
+// A Chaotic Era has exactly two endings and both are announced. Surviving used
+// to be reported by nothing at all, which on screen was indistinguishable from
+// a death whose notice had failed — so assert every era reaches one of them.
+record(
+  "every Chaotic Era resolves",
+  `${collapses} died + ${survivals} survived + ${unfinishedChaos} running`,
+  `${chaoticEras}`,
+  collapses + survivals + unfinishedChaos === chaoticEras,
+);
 record(
   "sun trail within its orbit's limit",
   `worst excess ${maxTrailExcess}`,
@@ -361,6 +387,7 @@ if (process.argv.includes("--json")) {
         closure,
         chaoticEras,
         collapses,
+        survivals,
         mortality,
         repeatRate,
         outerWorldsLost,
@@ -387,7 +414,9 @@ if (process.argv.includes("--json")) {
       `  ${c.pass ? "PASS" : "FAIL"}  ${c.name.padEnd(width)}  ${c.value.padEnd(26)} expected ${c.expected}`,
     );
   }
-  console.log(`\n  chaotic eras ${chaoticEras}, collapses ${collapses}, outer worlds lost ${outerWorldsLost}`);
+  console.log(
+    `\n  chaotic eras ${chaoticEras}, collapses ${collapses}, survivals ${survivals}, outer worlds lost ${outerWorldsLost}`,
+  );
   console.log(`  causes ${JSON.stringify(causeCounts)}`);
   console.log(`  peak sun speed ${round(peakSunSpeed)}, slowest rate ${round(slowestRate)}x`);
 
