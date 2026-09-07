@@ -409,9 +409,15 @@ if (process.argv.includes("--json")) {
     `${SEEDS.length * MINUTES_PER_SEED} simulated minutes across seeds ${SEEDS.join(", ")}, plus ${PINNED_MINUTES} pinned\n`,
   );
   const width = Math.max(...checks.map((c) => c.name.length));
+  // Measured like the name column rather than fixed at 26, which one long
+  // value was enough to overflow — and the only row whose `expected` sat in a
+  // different column was the one a reader most wanted to compare. This report
+  // is read by eye, diffing one run against another, and a ragged column is
+  // exactly what makes that hard.
+  const valueWidth = Math.max(...checks.map((c) => c.value.length));
   for (const c of checks) {
     console.log(
-      `  ${c.pass ? "PASS" : "FAIL"}  ${c.name.padEnd(width)}  ${c.value.padEnd(26)} expected ${c.expected}`,
+      `  ${c.pass ? "PASS" : "FAIL"}  ${c.name.padEnd(width)}  ${c.value.padEnd(valueWidth)} expected ${c.expected}`,
     );
   }
   console.log(

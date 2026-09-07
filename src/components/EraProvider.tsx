@@ -42,8 +42,14 @@ export type Notice =
 type EraContextValue = {
   era: Era;
   civilization: number;
-  /** Set for a few seconds after a Chaotic Era resolves, either way. */
+  /**
+   * The last outcome announced, kept after the notice is dismissed so it can
+   * be faded out rather than unmounted mid-sentence. Null only before the
+   * first Chaotic Era resolves.
+   */
   notice: Notice | null;
+  /** Whether that notice should currently be on screen. */
+  noticeVisible: boolean;
   stabilised: boolean;
   setStabilised: (value: boolean) => void;
   /** Canvas components register here to be drawn each frame. */
@@ -69,6 +75,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
   const [era, setEra] = useState<Era>("stable");
   const [civilization, setCivilization] = useState(1);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [noticeVisible, setNoticeVisible] = useState(false);
   const [stabilised, setStabilisedState] = useState(false);
 
   const systemRef = useRef<System | null>(null);
@@ -169,20 +176,26 @@ export default function EraProvider({ children }: { children: ReactNode }) {
 
       for (let i = 0; i < frames; i++) {
         for (const event of advance(system, 1)) {
+          // Dismissing clears `noticeVisible` and leaves `notice` standing, so
+          // the panel has text to fade out with. Clearing the notice itself
+          // unmounted the text in the same commit that started the wrapper's
+          // 700ms fade, and it cut out mid-sentence.
           if (event.type === "collapse") {
             const destroyed = event.civilization;
             setNotice({ kind: "collapse", civilization: destroyed, cause: event.cause });
+            setNoticeVisible(true);
             try {
               localStorage.setItem(CIVILIZATION_KEY, String(destroyed + 1));
             } catch {
               // Non-persistent visitors simply restart at 1 next time.
             }
             clearTimeout(noticeTimer);
-            noticeTimer = setTimeout(() => setNotice(null), COLLAPSE_NOTICE_MS);
+            noticeTimer = setTimeout(() => setNoticeVisible(false), COLLAPSE_NOTICE_MS);
           } else if (event.type === "survived") {
             setNotice({ kind: "survived", civilization: event.civilization });
+            setNoticeVisible(true);
             clearTimeout(noticeTimer);
-            noticeTimer = setTimeout(() => setNotice(null), SURVIVAL_NOTICE_MS);
+            noticeTimer = setTimeout(() => setNoticeVisible(false), SURVIVAL_NOTICE_MS);
           }
         }
       }
@@ -261,6 +274,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         era,
         civilization,
         notice,
+        noticeVisible,
         stabilised,
         setStabilised,
         registerRenderer,

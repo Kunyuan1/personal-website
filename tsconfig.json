@@ -15,6 +15,10 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // The harness imports "../src/lib/trisolaris.ts" by its real extension,
+    // which is how node --experimental-strip-types runs it unbuilt. Without
+    // this the compiler rejects the import and scripts/ cannot be included.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
@@ -37,7 +41,6 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules",
-    "scripts"
+    "node_modules"
   ]
 }
