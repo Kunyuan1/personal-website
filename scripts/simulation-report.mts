@@ -131,7 +131,7 @@ let ghostsCreated = 0;
 let shortestTrailAfterCollapse = Infinity;
 let maxTrailExcess = 0;
 let maxSunRadius = 0;
-let maxHomeWhileStable = 0;
+let maxWorldWhileStable = 0;
 let peakSunSpeed = 0;
 let slowestRate = 1;
 let worstCrossing = Infinity;
@@ -144,15 +144,19 @@ for (const seed of [...SEEDS]) {
   let previousCause: CollapseCause | null = null;
   let offScreenSince = -1;
   let simTime = 0;
-  let insideChaos = false;
+
   const prevSunPositions = sys.suns.map((s) => ({ x: s.x, y: s.y }));
 
   for (let f = 0; f < MINUTES_PER_SEED * 60 * SIM_HZ; f++) {
-    const visible = sys.orbit.planetRadii[sys.orbit.planetRadii.length - 1] * 1.06;
+    const visible = sys.orbit.worlds[sys.orbit.worlds.length - 1].r * 1.06;
     const homeRadius = Math.hypot(sys.planets[0].x, sys.planets[0].y);
     if (homeRadius > visible && offScreenSince < 0) offScreenSince = simTime;
     if (homeRadius <= visible) offScreenSince = -1;
 
+    // Read before the frame, not after: a collapse has already reset the era
+    // by the time its event is handled. This is the era the UI was reporting
+    // at the moment anything died in it.
+    const stableBefore = sys.era === "stable" && sys.settle >= 1;
     const ghostsBefore = sys.ghosts.length;
     const events = advance(sys, 1, rand);
     simTime += SIM_FRAME_TIME;
@@ -160,19 +164,21 @@ for (const seed of [...SEEDS]) {
 
     for (const event of events) {
       if (event.type === "era") {
-        if (event.era === "chaotic") {
-          chaoticEras++;
-          insideChaos = true;
-        }
+        if (event.era === "chaotic") chaoticEras++;
       } else if (event.type === "worldLost") {
         outerWorldsLost++;
         deaths++;
+        // An outer world counts too. This branch used to carry no invariant at
+        // all, so a world dying under a UI reporting a Stable Era — the first
+        // failure class this harness exists to catch — went unnoticed for
+        // everything except Trisolaris.
+        if (stableBefore) deathsDuringStable++;
       } else {
         collapses++;
         deaths++;
         causeCounts[event.cause] = (causeCounts[event.cause] ?? 0) + 1;
         if (event.cause === previousCause) repeats++;
-        if (!insideChaos) deathsDuringStable++;
+        if (stableBefore) deathsDuringStable++;
         // A collapse must always begin a settle; settle >= 1 means it didn't.
         if (sys.settle >= 1) collapsesWithoutSettle++;
         shortestTrailAfterCollapse = Math.min(
@@ -182,7 +188,6 @@ for (const seed of [...SEEDS]) {
         noticeDelays.push(offScreenSince >= 0 ? simTime - offScreenSince : 0);
         previousCause = event.cause;
         offScreenSince = -1;
-        insideChaos = false;
       }
     }
 
@@ -205,12 +210,15 @@ for (const seed of [...SEEDS]) {
       }
     });
 
+    // Every world, not just Trisolaris. Checking `planets[0]` alone left the
+    // other radii with no Stable-Era invariant at all: a world planted at a
+    // radius this file records as unsurvivable reached 1.58x its own orbit
+    // during a Stable Era and the report still printed all-pass.
     if (sys.era === "stable" && sys.settle >= 1) {
-      const home = sys.planets[0];
-      maxHomeWhileStable = Math.max(
-        maxHomeWhileStable,
-        Math.hypot(home.x, home.y) / home.home,
-      );
+      for (const p of sys.planets) {
+        if (!p.alive) continue;
+        maxWorldWhileStable = Math.max(maxWorldWhileStable, Math.hypot(p.x, p.y) / p.home);
+      }
     }
   }
 }
@@ -229,7 +237,7 @@ record(
   shortestTrailAfterCollapse > 0,
 );
 record("max sun radius", round(maxSunRadius), `<= ${SUN_ESCAPE_RADIUS}`, maxSunRadius <= SUN_ESCAPE_RADIUS + 0.01);
-record("home world while stable", `x${round(maxHomeWhileStable)}`, "< x1.10", maxHomeWhileStable < 1.1);
+record("any world while stable", `x${round(maxWorldWhileStable)}`, "< x1.10", maxWorldWhileStable < 1.1);
 record("worst on-screen crossing", `${round(worstCrossing, 2)}s`, "> 1.0s", worstCrossing > 1);
 record("all five causes occur", Object.keys(causeCounts).length, "5", Object.keys(causeCounts).length === 5);
 record("consecutive repeats", `${repeats}/${collapses} (${repeatRate}%)`, "< 20%", repeatRate < 20);
@@ -270,6 +278,75 @@ let pinnedNonStable = 0;
 record(`deaths while pinned (${PINNED_MINUTES} min)`, pinnedDeaths, "0", pinnedDeaths === 0);
 record("pinned frames outside a Stable Era", pinnedNonStable, "0", pinnedNonStable === 0);
 
+/* --------------------------------------------------------------------------
+   Every world in ORBITS holds its own orbit — this is where the radii in that
+   table come from.
+
+   Nothing above covers most of them. The long run only reaches the moth by
+   collapsing into it, which samples chaos rather than the Stable Era the radii
+   were chosen for; the pinned run starts at civilisation 1 and, being pinned,
+   never leaves it. So each solution gets its own rig. Pinned, a Stable Era is
+   re-seeded from the validated initial conditions every `stableDuration`, so
+   running one is a clean repeat of the era every world actually has to live
+   through, and the worst peak radius over eight of them is the number that
+   decides whether a radius belongs in the table.
+
+   Peak and not a symmetric band: these orbits are ellipses. The figure-eight's
+   home world dips to 0.784 of its radius every era, so a symmetric band would
+   reject the shipping site.
+   -------------------------------------------------------------------------- */
+const ERAS_PER_ORBIT = 8;
+type WorldPeak = { orbit: string; r: number; angle: number; home: boolean; peak: number };
+const worldPeaks: WorldPeak[] = [];
+
+for (let ci = 1; ci <= ORBITS.length; ci++) {
+  const orbit = ORBITS[ci - 1];
+  const sys = createSystem(ci);
+  const rand = mulberry32(SEEDS[0]);
+  sys.pinned = true;
+
+  const peaks = orbit.worlds.map(() => 0);
+  let eras = 0;
+  let settled = true;
+  // A Stable Era is `stableDuration` of simulation time plus the settle in
+  // front of it; the slack covers the settle and any throttling. Whether the
+  // eras were actually reached is asserted below rather than assumed.
+  const cap = Math.ceil(((orbit.stableDuration + 8) * ERAS_PER_ORBIT * 2) / SIM_FRAME_TIME);
+
+  for (let f = 0; f < cap && eras < ERAS_PER_ORBIT; f++) {
+    advance(sys, 1, rand);
+    if (sys.settle >= 1) {
+      settled = true;
+    } else if (settled) {
+      // Pinned, the only way settle drops is a re-seed: one era just ended.
+      settled = false;
+      eras++;
+    }
+    if (sys.era === "stable" && sys.settle >= 1) {
+      sys.planets.forEach((p, i) => {
+        if (p.alive) peaks[i] = Math.max(peaks[i], Math.hypot(p.x, p.y) / p.home);
+      });
+    }
+  }
+
+  record(
+    `${orbit.id}: Stable Eras measured`,
+    eras,
+    `${ERAS_PER_ORBIT}`,
+    eras === ERAS_PER_ORBIT,
+  );
+  orbit.worlds.forEach((w, i) => {
+    worldPeaks.push({ orbit: orbit.id, r: w.r, angle: w.angle, home: i === 0, peak: peaks[i] });
+  });
+  const worst = Math.max(...peaks);
+  record(
+    `${orbit.id}: every world holds its orbit`,
+    `x${round(worst)}`,
+    "< x1.10",
+    worst < 1.1,
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 
 const failed = checks.filter((c) => !c.pass);
@@ -292,6 +369,7 @@ if (process.argv.includes("--json")) {
         peakSunSpeed: round(peakSunSpeed),
         slowestRate: round(slowestRate),
         worstCrossing: round(worstCrossing, 2),
+        worldPeaks: worldPeaks.map((w) => ({ ...w, peak: round(w.peak) })),
         checks,
       },
       null,
@@ -311,7 +389,20 @@ if (process.argv.includes("--json")) {
   }
   console.log(`\n  chaotic eras ${chaoticEras}, collapses ${collapses}, outer worlds lost ${outerWorldsLost}`);
   console.log(`  causes ${JSON.stringify(causeCounts)}`);
-  console.log(`  peak sun speed ${round(peakSunSpeed)}, slowest rate ${round(slowestRate)}x\n`);
+  console.log(`  peak sun speed ${round(peakSunSpeed)}, slowest rate ${round(slowestRate)}x`);
+
+  // Printed per world, not just as the worst: this is the provenance of every
+  // radius in ORBITS, and a reader auditing one of them needs its own number.
+  console.log(`\n  peak radius per world, over ${ERAS_PER_ORBIT} pinned Stable Eras each`);
+  for (const orbit of ORBITS) {
+    console.log(`    ${orbit.id}`);
+    for (const w of worldPeaks.filter((p) => p.orbit === orbit.id)) {
+      console.log(
+        `      ${(w.home ? "home " : "world").padEnd(5)}  r=${String(w.r).padEnd(5)} ${String(w.angle).padStart(3)}deg   peak x${round(w.peak)}`,
+      );
+    }
+  }
+  console.log();
 }
 
 if (failed.length > 0) {

@@ -44,7 +44,7 @@ Three files, with a strict separation:
 
 ```
 npm install
-npm run sim:report      # the important one: ~1-2 min, 14 invariants
+npm run sim:report      # the important one: ~1-2 min, 21 invariants
 npx tsc --noEmit
 npx eslint .
 npx next build
@@ -65,19 +65,24 @@ because a measurement contradicted what the code plainly appeared to do.
 Current values are from the committed baseline. A regression in any of these is
 a blocking finding.
 
-1. **No world may be destroyed during a Stable Era.** Now 0. A Stable Era is
-   supposed to be the safe half of the cycle; a death there means an orbit was
-   started from an unvalidated initial condition.
+1. **No world may be destroyed during a Stable Era.** Now 0, counting outer
+   worlds as well as Trisolaris. A Stable Era is supposed to be the safe half
+   of the cycle; a death there means an orbit was started from an unvalidated
+   initial condition. This once covered only collapses, so an outer world dying
+   under a UI reporting a Stable Era went uncounted.
 2. **Every collapse must begin a settle.** Now 0 skipped. If a path resets the
    system without one, the suns snap into place instead of orbiting back.
-3. **Every destroyed world must leave a fading ghost.** Now 108/108. Otherwise
+3. **Every destroyed world must leave a fading ghost.** Now 159/159. Otherwise
    a world and its trail vanish between two frames.
 4. **Sun trails must survive a collapse.** Now 359 points immediately after.
    Clearing them makes the figure-eight blink out of existence.
 5. **Suns stay within `SUN_ESCAPE_RADIUS`.** Now max 6.0. Beyond that they
    leave the frame and the hero looks empty.
-6. **The home world holds its orbit through a Stable Era.** Now x1.034 of its
-   own radius.
+6. **Every world holds its orbit through a Stable Era.** Now x1.034 of its own
+   radius, worst over all worlds — not just Trisolaris, which is all this used
+   to sample. Backed by a pinned rig per periodic solution that re-measures
+   every entry in `ORBITS` over eight Stable Eras and prints its peak radius;
+   those printed numbers are the provenance of the table.
 7. **No on-screen crossing faster than ~1s.** Now 3.47s worst. Faster than that
    reads as a teleport rather than motion.
 8. **`pickFate` may only return a cause that is actually true of the state.**
@@ -105,7 +110,10 @@ a blocking finding.
 - **`timeScaleFor` and the sub-step loop.** The adaptive step must be
   re-evaluated *every sub-step*. Choosing a rate once per frame changed nothing
   measurable, because an encounter begins and ends inside one frame's 32
-  sub-steps.
+  sub-steps. It must also key on the **suns alone**: the scale is applied to
+  the whole system, so letting planets into the maximum lets test particles
+  perturb the suns through the step size. Measured, one extra decorative world
+  made the same seed diverge after ~21s.
 - **`EraProvider`.** Look for anything that would cause a React re-render per
   frame, and for state read from `localStorage` in a way that could differ
   between server and first client render.

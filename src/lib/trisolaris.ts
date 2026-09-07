@@ -116,7 +116,7 @@ export const MIN_TIME_SCALE = 0.035;
 export const ESCAPE_FACTOR = 1.32;
 
 export function escapeRadiusFor(orbit: Orbit): number {
-  return orbit.planetRadii[orbit.planetRadii.length - 1] * ESCAPE_FACTOR;
+  return orbit.worlds[orbit.worlds.length - 1].r * ESCAPE_FACTOR;
 }
 /**
  * Beyond this a sun has escaped and the system has come apart. Without this
@@ -156,22 +156,37 @@ export const WORLD_COLOR = "#6b7183";
  * Periodic solutions for three equal masses, in the collinear parameterisation
  *   r1 = (-1,0), r2 = (1,0), r3 = (0,0);  v1 = v2 = (vx,vy);  v3 = -2(vx,vy)
  *
- * `planetRadii[0]` is Trisolaris. Every radius here was measured over five
- * Stable Eras and kept only if the orbit stayed bound; the gaps between them
- * are not aesthetic, they are the radii that survive. The figure-eight holds
+ * `worlds[0]` is Trisolaris. Nothing in this table is chosen for looks: a world
+ * is kept only if its orbit stays bound across a run of Stable Eras, and the
+ * gaps between the radii are the radii that did not. The figure-eight holds
  * worlds from 3.0 outward, the moth only from 4.6, which is why its system
  * looks so much wider.
  *
- * Later worlds were interleaved between the existing radii rather than added
- * beyond them, for two reasons. The frame is derived from the outermost radius
- * (`outermost * 1.06` in SystemCanvas), so extending outward shrinks the suns
- * on screen — the one thing on the page the eye is actually following. And the
- * band inward of 3.0 is the one already known not to survive, so there is
- * nowhere else to put them.
+ * The provenance is `npm run sim:report`, which re-measures every world in
+ * this table over eight pinned Stable Eras per solution and prints the worst
+ * peak radius each one reaches. A new world is added by writing it here and
+ * reading what the harness says; the comment cannot go stale because the
+ * number is recomputed rather than recorded.
  *
  * Peak radius is the measure, not a symmetric band: these orbits are ellipses,
  * and the figure-eight's home world dips to 0.784 of its radius every era
- * while never exceeding 1.003 of it.
+ * while never exceeding 1.003 of it. A symmetric band rejects the shipping
+ * site.
+ *
+ * Later worlds were interleaved between the original radii rather than added
+ * beyond them. The frame is derived from the outermost radius (`outermost *
+ * 1.06` in SystemCanvas) while `drawSun` uses a fixed pixel size, so extending
+ * outward does not shrink the suns — it crowds them together. At a 1440-wide
+ * hero an outermost 5.4 would take the figure-eight from 86 to 67 px/unit, and
+ * the three coronas are 68px across and already overlapping at 86. The band
+ * inward of 3.0 is the one measured not to survive, so the gaps are the only
+ * room there is.
+ *
+ * The angle is written down per world rather than derived from the array
+ * length. Stability depends on a world's phase relative to the suns — the same
+ * reason `advance` re-seeds survivors onto canonical angles — so deriving it
+ * from the length meant adding one world silently re-phased every sibling onto
+ * an unmeasured initial condition.
  */
 export type Orbit = {
   id: string;
@@ -180,7 +195,8 @@ export type Orbit = {
   vx: number;
   vy: number;
   period: number;
-  planetRadii: number[];
+  /** Radius and starting angle, in degrees, of each world. Innermost first. */
+  worlds: { r: number; angle: number }[];
   /** How long this orbit's Stable Era runs, in simulation time. */
   stableDuration: number;
 };
@@ -193,7 +209,13 @@ export const ORBITS: readonly Orbit[] = [
     vx: 0.3471128135672417,
     vy: 0.5327261568568347,
     period: 6.3259,
-    planetRadii: [3.0, 3.3, 3.6, 3.9, 4.2],
+    worlds: [
+      { r: 3.0, angle: 0 },
+      { r: 3.3, angle: 72 },
+      { r: 3.6, angle: 144 },
+      { r: 3.9, angle: 216 },
+      { r: 4.2, angle: 288 },
+    ],
     stableDuration: 16,
   },
   {
@@ -203,7 +225,12 @@ export const ORBITS: readonly Orbit[] = [
     vx: 0.46444,
     vy: 0.39606,
     period: 14.8939,
-    planetRadii: [4.6, 5.05, 5.5, 6.0],
+    worlds: [
+      { r: 4.6, angle: 0 },
+      { r: 5.05, angle: 90 },
+      { r: 5.5, angle: 180 },
+      { r: 6.0, angle: 270 },
+    ],
     stableDuration: 20,
   },
 ];
@@ -296,9 +323,11 @@ function sunsFor(orbit: Orbit): Body[] {
 }
 
 function planetsFor(orbit: Orbit): Planet[] {
-  // Spread the starting angles so the worlds don't line up like a diagram.
-  return orbit.planetRadii.map((home, i) => {
-    const angle = (i / orbit.planetRadii.length) * Math.PI * 2;
+  // The angles are spread so the worlds don't line up like a diagram, but they
+  // come from the table rather than from the index: each one is a measured
+  // initial condition, not a share of the circle.
+  return orbit.worlds.map(({ r: home, angle: degrees }, i) => {
+    const angle = (degrees * Math.PI) / 180;
     const v = Math.sqrt((G * 3) / home);
     return {
       x: home * Math.cos(angle),
@@ -328,7 +357,7 @@ export function createSystem(civilization = 1): System {
   const planets = planetsFor(orbit);
   for (const p of planets) computePlanetAcceleration(p, suns);
 
-  const home = orbit.planetRadii[0];
+  const home = orbit.worlds[0].r;
   const homePeriod = (2 * Math.PI * home) / Math.sqrt(3 / home);
 
   return {
@@ -460,15 +489,22 @@ function integrate(sys: System, dt: number) {
 }
 
 /**
- * How much to shrink the step this frame. Driven by the fastest body, since
+ * How much to shrink the step this frame. Driven by the fastest sun, since
  * speed is what both breaks the integrator and outruns the display.
+ *
+ * Suns only, deliberately. The worlds are test particles: they take no part in
+ * the suns' periodic solution, and letting them into this maximum put them
+ * back into it by the side door, because the resulting scale is applied to the
+ * whole system. Measured, adding two decorative worlds was enough to make the
+ * suns diverge from the same seed after 21 seconds — so world count was not
+ * the display-only decision this file claims it is. Dropping the planets costs
+ * almost nothing: sampled per frame, a planet set the scale in 464 frames out
+ * of 270,000 and the worst it ever drove was 0.76. It buys back sun paths that
+ * are identical whatever is orbiting them.
  */
 function timeScaleFor(sys: System): number {
   let fastest = 0;
   for (const s of sys.suns) fastest = Math.max(fastest, Math.hypot(s.vx, s.vy));
-  for (const p of sys.planets) {
-    if (p.alive) fastest = Math.max(fastest, Math.hypot(p.vx, p.vy));
-  }
   if (fastest <= SPEED_REFERENCE) return 1;
   return Math.max(MIN_TIME_SCALE, SPEED_REFERENCE / fastest);
 }
