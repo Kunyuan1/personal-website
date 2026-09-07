@@ -48,13 +48,24 @@ the planted world reached 1.58x its own radius while
   committed, so the numbers behind the `ORBITS` table are printed by the
   harness rather than recorded in prose.
 
-The planted case now fails two checks by name and exits 1:
+The planted case now fails three checks by name and exits 1 — the third is the
+`worldLost` counting above, which catches the deaths themselves rather than the
+wandering that led to them:
 
 ```
+FAIL  deaths during a Stable Era                 39       expected 0
 FAIL  any world while stable                     x2.638   expected < x1.10
 FAIL  moth: every world holds its orbit          x2.639   expected < x1.10
+3 invariant(s) failed
     world  r=3      30deg   peak x2.639
 ```
+
+The two failure modes are complementary, and it is worth saying why. A world
+that dies by wandering *outward* trips the peak check; one that dies *inward*,
+by burning or being caught in a syzygy, never exceeds its own radius and trips
+only the death count. Planted inward on the moth — `{ r: 1.0, angle: 0 }` — the
+peak check reads a comfortable x1.034 and it is the death count, at 40, that
+fails the run. Neither check covers the other.
 
 ### 2. The extra worlds perturbed the suns — fixed
 
