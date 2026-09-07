@@ -76,7 +76,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
      * edge, which is the point.
      */
     const scaleFor = (orbit: Orbit) => {
-      const outermost = orbit.planetRadii[orbit.planetRadii.length - 1];
+      const outermost = orbit.worlds[orbit.worlds.length - 1].r;
       const extent = outermost * 1.06;
       const wide = width >= 900;
       return wide
