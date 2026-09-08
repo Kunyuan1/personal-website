@@ -116,13 +116,28 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     const sx = (x: number) => centerX + x * scale;
     const sy = (y: number) => centerY + y * scale;
 
+    /**
+     * `visible` is the share of the stored trail to draw, and it exists for
+     * rehydration: the simulation is frozen while the tab is hidden, so on the
+     * way back the trail is still stored at full length and has to be clipped
+     * rather than regrown. The newest points are the ones kept, so the trail
+     * unfurls backwards from the body it belongs to instead of the body
+     * arriving detached from its own path.
+     *
+     * Banded across the drawn span rather than the stored one — the ramp puts
+     * its brightest band at the body, and banding the stored length would
+     * leave that band off the end of what is actually on screen.
+     */
     const drawTrail = (
       trail: Point[],
       color: string,
       maxAlpha: number,
       maxWidth: number,
+      visible: number,
     ) => {
-      const n = trail.length;
+      // An index rather than a slice: this runs for every body, every frame.
+      const from = trail.length - Math.ceil(trail.length * visible);
+      const n = trail.length - from;
       if (n < 2) return;
 
       const per = Math.ceil(n / TRAIL_BANDS);
@@ -131,8 +146,8 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       ctx.lineJoin = "round";
 
       for (let band = 0; band < TRAIL_BANDS; band++) {
-        const start = band * per;
-        const end = Math.min(n, start + per + 1);
+        const start = from + band * per;
+        const end = Math.min(trail.length, start + per + 1);
         if (end - start < 2) continue;
 
         // 0 at the oldest end of the trail, 1 at the body itself.
@@ -216,12 +231,13 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       ctx.globalAlpha = 1;
     };
 
-    const render = (system: System) => {
+    const render = (system: System, hydration: number) => {
       rescale(system);
 
       // Heat comes from the simulation, the same number the CSS palette uses,
-      // so the canvas and the page can never drift out of step.
-      const warmth = system.heat;
+      // so the canvas and the page can never drift out of step — including
+      // through a rehydration, which scales both by the same progress value.
+      const warmth = system.heat * hydration;
       const cold = CANVAS_GROUND.stable;
       const hot = CANVAS_GROUND.chaotic;
       const r = Math.round(cold[0] + (hot[0] - cold[0]) * warmth);
@@ -263,8 +279,9 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       ctx.globalCompositeOperation = "lighter";
 
       // Worlds fade in over the settle, so a new civilisation arrives rather
-      // than popping into place.
-      const worldAlpha = system.settle;
+      // than popping into place — and again over a rehydration, which is the
+      // same arrival for the same reason.
+      const worldAlpha = system.settle * hydration;
 
       // Their paths are thinner and dimmer than the suns', so the eye reads
       // the bright periodic orbit first and the quiet ones second.
@@ -276,17 +293,18 @@ export default function SystemCanvas({ className = "" }: { className?: string })
           isHome ? HOME_COLOR : WORLD_COLOR,
           (isHome ? 0.5 : 0.28) * worldAlpha,
           isHome ? 1.1 : 0.7,
+          hydration,
         );
       });
 
       for (let i = 0; i < system.sunTrails.length; i++) {
-        drawTrail(system.sunTrails[i], SUN_COLORS[i], 0.9, 2.2);
+        drawTrail(system.sunTrails[i], SUN_COLORS[i], 0.9, 2.2, hydration);
       }
 
       // Worlds that have been destroyed fade out where they died rather than
       // disappearing between two frames.
       system.ghosts.forEach((ghost) => {
-        const alpha = Math.max(0, ghost.fade);
+        const alpha = Math.max(0, ghost.fade) * hydration;
         // Drawn exactly as it was in life, home world included. A ghost exists
         // to keep a death from being a cut, and demoting Trisolaris to a
         // generic grey world at the instant it dies is the hardest cut on
@@ -296,6 +314,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
           ghost.isHome ? HOME_COLOR : WORLD_COLOR,
           (ghost.isHome ? 0.5 : 0.28) * alpha,
           ghost.isHome ? 1.1 : 0.7,
+          hydration,
         );
         drawWorld(ghost, ghost.isHome, alpha);
       });
