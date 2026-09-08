@@ -352,7 +352,7 @@ export type SimEvent =
   | { type: "era"; era: Era }
   | { type: "collapse"; civilization: number; cause: CollapseCause }
   /**
-   * The home world came through a Chaotic Era. Measured, 34% of them end this
+   * The home world came through a Chaotic Era. Measured, 33% of them end this
    * way, and without an event for it the outcome was reported by nothing —
    * indistinguishable on screen from a death whose notice had failed.
    */

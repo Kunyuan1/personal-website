@@ -160,10 +160,10 @@ for (const seed of [...SEEDS]) {
   let offScreenSince = -1;
   let simTime = 0;
   // New ghosts are counted by identity, and compared against the number of
-  // deaths in the same frame. Watching the array merely grow could not tell
-  // one death from two: an outer world lost in the frame the home world falls
-  // grows it once, and the invariant read that as a world that had vanished
-  // without fading.
+  // worlds that actually stopped being alive in the same frame. Watching the
+  // array merely grow could not tell one death from two: an outer world lost
+  // in the frame the home world falls grows it once, and the invariant read
+  // that as a world that had vanished without fading.
   const seenGhosts = new WeakSet<Planet>();
 
   const prevSunPositions = sys.suns.map((s) => ({ x: s.x, y: s.y }));
@@ -190,6 +190,7 @@ for (const seed of [...SEEDS]) {
     // by the time its event is handled. This is the era the UI was reporting
     // at the moment anything died in it.
     const stableBefore = sys.era === "stable" && sys.settle >= 1;
+    const aliveBefore = sys.planets.filter((pl) => pl.alive).length;
     const events = advance(sys, 1, rand);
     simTime += SIM_FRAME_TIME;
     let newGhosts = 0;
@@ -198,12 +199,23 @@ for (const seed of [...SEEDS]) {
       seenGhosts.add(ghost);
       newGhosts++;
     }
-    // A collapse retires every world still standing, not only the one that
-    // died, so this is >= rather than ===.
-    const deathsThisFrame = events.filter(
-      (e) => e.type === "collapse" || e.type === "worldLost",
-    ).length;
-    if (newGhosts < deathsThisFrame) deathsWithoutGhost += deathsThisFrame - newGhosts;
+    // How many worlds should have been retired this frame. A collapse retires
+    // every world still standing, not only the one that died, so it is the
+    // whole standing population; otherwise it is however many went from alive
+    // to dead.
+    //
+    // Counted this way rather than against the number of death *events*,
+    // which had four worlds of slack on exactly the frame that matters:
+    // a collapse creates a ghost per surviving outer world, so the one event
+    // was covered several times over and a home world that was never ghosted
+    // went unseen. Planted — `resetInto` carrying `pl.alive && !pl.isHome`,
+    // so Trisolaris and its trail blink out on every collapse — the old test
+    // read 156/156 and the run exited 0.
+    const collapsed = events.some((e) => e.type === "collapse");
+    const expectedGhosts = collapsed
+      ? aliveBefore
+      : aliveBefore - sys.planets.filter((pl) => pl.alive).length;
+    if (newGhosts < expectedGhosts) deathsWithoutGhost += expectedGhosts - newGhosts;
 
     for (const event of events) {
       if (event.type === "era") {
