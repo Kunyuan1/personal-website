@@ -33,8 +33,12 @@ const SURVIVAL_NOTICE_MS = 6400;
  * sit through an animation proving it.
  */
 const DEHYDRATION_MS = 5000;
-/** How long the return from one takes. */
-const REHYDRATION_MS = 900;
+/**
+ * How long the return from one takes. Watched by eye at 900, 1500 and 3000:
+ * 900 is over before you have found the suns, 3000 holds the page hostage on
+ * every return. 1500 is the one you cannot miss and do not wait through.
+ */
+const REHYDRATION_MS = 1500;
 
 /**
  * Draws the system, and takes rehydration progress along with it: 1 whenever
@@ -66,12 +70,6 @@ type EraContextValue = {
   noticeVisible: boolean;
   stabilised: boolean;
   setStabilised: (value: boolean) => void;
-  /**
-   * True from the moment the hidden tab has been away long enough to have
-   * dried out, until the return finishes. Named for what the Trisolarans do
-   * to survive a Chaotic Era: expel every drop of water, and wait.
-   */
-  dehydrated: boolean;
   /** Canvas components register here to be drawn each frame. */
   registerRenderer: (fn: Renderer | null) => void;
 };
@@ -97,7 +95,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [noticeVisible, setNoticeVisible] = useState(false);
   const [stabilised, setStabilisedState] = useState(false);
-  const [dehydrated, setDehydrated] = useState(false);
 
   const systemRef = useRef<System | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
@@ -179,7 +176,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     // tab is hidden, which is the whole point of the pause.
     let hydrationStart = 0;
     let hiddenAt = 0;
-    let dryTimer: ReturnType<typeof setTimeout> | undefined;
 
     // Mirrors of the last values pushed into React, so we only setState on a
     // genuine change rather than every frame.
@@ -244,7 +240,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         if (t >= 1) {
           hydrationStart = 0;
           hydrationRef.current = 1;
-          setDehydrated(false);
         } else {
           // The same smoothstep the canvas eases its framing with.
           hydrationRef.current = t * t * (3 - 2 * t);
@@ -284,15 +279,9 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         running = false;
         cancelAnimationFrame(frame);
         hiddenAt = performance.now();
-        // Marked from inside the absence rather than on the way out of it, so
-        // the footer's reading is true while it is true. Timers are throttled
-        // in a hidden tab but not stopped, and a second of slop against five
-        // does not matter.
-        dryTimer = setTimeout(() => setDehydrated(true), DEHYDRATION_MS);
         return;
       }
 
-      clearTimeout(dryTimer);
       if (running) return;
 
       running = true;
@@ -307,7 +296,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         // walked away from, resumed mid-sentence.
         hydrationStart = now;
         hydrationRef.current = 0;
-        setDehydrated(true);
       } else if (hydrationStart) {
         // Hidden again part-way through a return. Push the transition on by
         // the time away rather than restarting it or snapping to full, either
@@ -323,7 +311,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       running = false;
       cancelAnimationFrame(frame);
       clearTimeout(noticeTimer);
-      clearTimeout(dryTimer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
@@ -357,7 +344,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         noticeVisible,
         stabilised,
         setStabilised,
-        dehydrated,
         registerRenderer,
       }}
     >
