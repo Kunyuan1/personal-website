@@ -46,6 +46,16 @@ jobs:
 
       - run: npm ci
 
+      # Must come before the typecheck, and this is the step CI existed to
+      # find. `next-env.d.ts` and `.next/types` are both gitignored and both
+      # generated, so on any checkout that has not already been built there are
+      # no declarations for image imports and no `LayoutProps` — `tsc --noEmit`
+      # reports 14 errors that are not real (13 x TS2307, one TS2304). It has
+      # only ever passed on a machine that had run `next dev` or `next build`
+      # at some point, which is every machine anyone had run it on.
+      - name: generate Next types
+        run: npx next typegen
+
       # Ordered cheapest-first, so an obvious break reports in seconds rather
       # than after the simulation has run. Each step runs even if an earlier one
       # failed: one push should report every problem it has, not just the first.
