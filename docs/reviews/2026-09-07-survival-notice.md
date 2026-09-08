@@ -191,3 +191,21 @@ simulation paused and no era ever resolves. A hidden tab also gets no
 
 Check it in an ordinary browser window against `next dev`, where a Chaotic Era
 resolves roughly every 30 seconds.
+
+**Addendum, 2026-09-08.** The mechanism above is half right, and the half that
+is wrong costs the next person the same afternoon. Measured from inside the
+pane while building the dehydration feature: it reports
+`document.visibilityState === "visible"`, not `"hidden"`. What it does not do
+is deliver `requestAnimationFrame` — 0 frames in 1.6s — because the pane
+itself is hidden behind the conversation. So the simulation is frozen for a
+reason the page cannot see: `visibilitychange` never fires, the pause never
+engages, and nothing in `EraProvider` is at fault. Taking a screenshot does
+not unstick it.
+
+Two ways through it, both used to verify the dehydration transition:
+
+- Have the human open the Browser pane. Frames resume.
+- Drive a headless Chrome over CDP and override `document.hidden` with
+  `Object.defineProperty`, then dispatch a synthetic `visibilitychange`. Only
+  the signal is faked; the handler, the thresholds and the canvas are the
+  shipped code, sampled per frame.
