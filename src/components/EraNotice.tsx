@@ -9,7 +9,7 @@ import type { CollapseCause } from "@/lib/trisolaris";
  * How a Chaotic Era ended — both ways.
  *
  * A Chaotic Era resolves into exactly one of two outcomes, and measured across
- * the report seeds the home world survives 43% of them. Only the deaths used to
+ * the report seeds the home world survives 34% of them. Only the deaths used to
  * be announced, so a survival was signalled by nothing at all: the same fade
  * from red to black, the same worlds fading back in, and no text. From the
  * outside that is indistinguishable from a disaster whose notice failed, which
