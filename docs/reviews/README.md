@@ -28,7 +28,7 @@ npm run sim:report
 ```
 
 75 simulated minutes across five fixed seeds, a 10-minute pinned run, and eight
-pinned Stable Eras per periodic solution, checking 21 invariants. Exits non-zero
+pinned Stable Eras per periodic solution, checking 22 invariants. Exits non-zero
 if any fails. `--json` gives a diffable form. The per-world peak radii it prints
 are the provenance of every entry in the `ORBITS` table.
 
@@ -63,3 +63,4 @@ what stops the next.
 | 2026-09-05 | [Simulation baseline](./2026-09-05-simulation-baseline.md) | 14/14 invariants passing; no open findings |
 | 2026-09-05 | [Simulation](./2026-09-05-simulation.md) | All 6 findings fixed; harness now 17/17, with the original 14 unchanged; plus a `syzygy` reproduction (seed 2 @ 84.3s) |
 | 2026-09-06 | [More worlds](./2026-09-06-more-worlds.md) | All 5 findings fixed; harness now 21/21, and every world in `ORBITS` is measured rather than just Trisolaris |
+| 2026-09-07 | [Survival notice](./2026-09-07-survival-notice.md) | All 5 findings fixed; harness now 22/22, and `tsc` covers `scripts/` for the first time |

@@ -44,7 +44,7 @@ Three files, with a strict separation:
 
 ```
 npm install
-npm run sim:report      # the important one: ~1-2 min, 21 invariants
+npm run sim:report      # the important one: ~1-2 min, 22 invariants
 npx tsc --noEmit
 npx eslint .
 npx next build
@@ -92,6 +92,10 @@ a blocking finding.
 10. **Entering a Chaotic Era must not kink the orbits.** Median per-frame
     velocity turn during the kick is 1.53 deg against 1.59 deg in a Stable Era
     — the perturbation should be invisible frame to frame.
+11. **Every Chaotic Era resolves into exactly one announced outcome.** Now
+    79 died + 60 survived + 1 still running against 140 eras. Surviving used to
+    be reported by nothing at all, which on screen was indistinguishable from a
+    death whose notice had failed to appear.
 
 ## Check these hardest — each was already got wrong once
 
@@ -114,6 +118,12 @@ a blocking finding.
   the whole system, so letting planets into the maximum lets test particles
   perturb the suns through the step size. Measured, one extra decorative world
   made the same seed diverge after ~21s.
+- **`tsconfig.json`'s `exclude`.** `"scripts"` there silently overrode the
+  `"**/*.mts"` entry in `include`, so for the whole life of the harness neither
+  `tsc` nor `next build` typechecked it — and a compile error in the event loop
+  shipped, miscounting every survival as a death. Confirm `npx tsc --noEmit`
+  still covers `scripts/`, and that the event chain in the harness still ends in
+  a `never` assignment rather than a bare `else`.
 - **`EraProvider`.** Look for anything that would cause a React re-render per
   frame, and for state read from `localStorage` in a way that could differ
   between server and first client render.
