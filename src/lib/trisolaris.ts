@@ -159,7 +159,19 @@ export const SUN_ESCAPE_RADIUS = 6;
  * [0.948, 1.034], so nothing tighter than the wider of those can admit a world
  * that nothing has happened to. At [0.7, 1.3] the figure-eight's home world
  * may wander between 2.1 and 3.9 against a frame that reaches 4.45 — visibly
- * pushed about, never leaving.
+ * pushed about, never leaving. Both are asserted by the pinned rig, against
+ * `homeExcursion`.
+ *
+ * It leaves the two solutions unequal, and deliberately so. The figure-eight
+ * keeps 0.084 of room below its natural floor against the moth's 0.248, and
+ * measured mortality is 95% against 51%. That looks like the band's doing and
+ * is not: with the band effectively removed the split is 70% against 12%,
+ * because the figure-eight holds its worlds from 3.0 outward while the suns
+ * roam to 6, so they burn. Evening the tolerance out was measured and rejected
+ * — every margin that helps the figure-eight lets its home world fall to about
+ * 1.5 units on a frame reaching 4.45, which stops reading as an orbit held at
+ * all. Bounding the absolute excursion is the thing worth keeping. See the
+ * 2026-09-08 review.
  */
 export const SURVIVABLE_BAND: readonly [number, number] = [0.7, 1.3];
 
@@ -229,6 +241,23 @@ export type Orbit = {
   period: number;
   /** Radius and starting angle, in degrees, of each world. Innermost first. */
   worlds: { r: number; angle: number }[];
+  /**
+   * The fractions of `worlds[0].r` the home world runs between over an
+   * undisturbed Stable Era — the orbit it is actually on, as opposed to the
+   * radius it was placed at.
+   *
+   * Written down because three comments already cite these numbers as the
+   * reason SURVIVABLE_BAND is not symmetric, and nothing checked them. The
+   * pinned rig in `npm run sim:report` re-measures both ends and fails if the
+   * table has drifted, and asserts the band still admits the whole range: an
+   * orbit whose undisturbed motion fell outside the band could never be
+   * survived, and nothing else would notice.
+   *
+   * They are not an input to the decision. A margin around each orbit's own
+   * excursion was measured as a replacement for the fixed band and rejected —
+   * see the 2026-09-08 review.
+   */
+  homeExcursion: readonly [number, number];
   /** How long this orbit's Stable Era runs, in simulation time. */
   stableDuration: number;
 };
@@ -248,6 +277,7 @@ export const ORBITS: readonly Orbit[] = [
       { r: 3.9, angle: 216 },
       { r: 4.2, angle: 288 },
     ],
+    homeExcursion: [0.784, 1.003],
     stableDuration: 16,
   },
   {
@@ -263,6 +293,7 @@ export const ORBITS: readonly Orbit[] = [
       { r: 5.5, angle: 180 },
       { r: 6.0, angle: 270 },
     ],
+    homeExcursion: [0.948, 1.034],
     stableDuration: 20,
   },
 ];

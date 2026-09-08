@@ -413,10 +413,20 @@ record("pinned frames outside a Stable Era", pinnedNonStable, "0", pinnedNonStab
    Peak and not a symmetric band: these orbits are ellipses. The figure-eight's
    home world dips to 0.784 of its radius every era, so a symmetric band would
    reject the shipping site.
+
+   The home world's floor is measured here too, and both ends asserted against
+   the `homeExcursion` in the table — three comments cite those numbers as the
+   reason the band is shaped the way it is, and until now nothing checked them.
+   The band is then asserted to admit the whole undisturbed range: an orbit
+   whose ordinary motion fell outside it could never be survived at all, and
+   the run would go green reporting 100% mortality as if that were physics.
    -------------------------------------------------------------------------- */
 const ERAS_PER_ORBIT = 8;
+/** How far the measured excursion may sit from the table before it is stale. */
+const EXCURSION_TOLERANCE = 0.002;
 type WorldPeak = { orbit: string; r: number; angle: number; home: boolean; peak: number };
 const worldPeaks: WorldPeak[] = [];
+const homeRanges: { orbit: string; low: number; high: number }[] = [];
 
 for (let ci = 1; ci <= ORBITS.length; ci++) {
   const orbit = ORBITS[ci - 1];
@@ -425,6 +435,7 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
   sys.pinned = true;
 
   const peaks = orbit.worlds.map(() => 0);
+  let homeLow = Infinity;
   let eras = 0;
   let settled = true;
   // A Stable Era is `stableDuration` of simulation time plus the settle in
@@ -445,6 +456,8 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
       sys.planets.forEach((p, i) => {
         if (p.alive) peaks[i] = Math.max(peaks[i], Math.hypot(p.x, p.y) / p.home);
       });
+      const home = sys.planets[0];
+      if (home.alive) homeLow = Math.min(homeLow, Math.hypot(home.x, home.y) / home.home);
     }
   }
 
@@ -463,6 +476,28 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
     `x${round(worst)}`,
     "< x1.10",
     worst < 1.1,
+  );
+
+  homeRanges.push({ orbit: orbit.id, low: homeLow, high: peaks[0] });
+  const [tableLow, tableHigh] = orbit.homeExcursion;
+  const stale = Math.max(Math.abs(homeLow - tableLow), Math.abs(peaks[0] - tableHigh));
+  record(
+    `${orbit.id}: home excursion matches the table`,
+    `[x${round(homeLow)}, x${round(peaks[0])}] vs [x${tableLow}, x${tableHigh}]`,
+    `within ${EXCURSION_TOLERANCE}`,
+    stale <= EXCURSION_TOLERANCE,
+  );
+
+  // The band has to leave room on both sides of an orbit nothing has happened
+  // to. Without this, tightening it — or adding a solution with a wider
+  // ellipse — makes survival impossible and reports it as mortality.
+  const roomBelow = homeLow - SURVIVABLE_BAND[0];
+  const roomAbove = SURVIVABLE_BAND[1] - peaks[0];
+  record(
+    `${orbit.id}: the band admits an undisturbed orbit`,
+    `room ${round(roomBelow)} below, ${round(roomAbove)} above`,
+    "both > 0",
+    roomBelow > 0 && roomAbove > 0,
   );
 }
 
@@ -521,6 +556,17 @@ if (process.argv.includes("--json")) {
 
   // Printed per world, not just as the worst: this is the provenance of every
   // radius in ORBITS, and a reader auditing one of them needs its own number.
+  // The home world's own orbit against the band it has to stay inside. The
+  // two solutions are not equally placed in it, which is measured rather
+  // than incidental — see the 2026-09-08 review.
+  console.log(`\n  home world's orbit against SURVIVABLE_BAND [${SURVIVABLE_BAND.join(", ")}]`);
+  for (const r of homeRanges) {
+    console.log(
+      `    ${r.orbit.padEnd(13)} runs [x${round(r.low)}, x${round(r.high)}]` +
+        `   room ${round(r.low - SURVIVABLE_BAND[0])} below, ${round(SURVIVABLE_BAND[1] - r.high)} above`,
+    );
+  }
+
   console.log(`\n  peak radius per world, over ${ERAS_PER_ORBIT} pinned Stable Eras each`);
   for (const orbit of ORBITS) {
     console.log(`    ${orbit.id}`);
