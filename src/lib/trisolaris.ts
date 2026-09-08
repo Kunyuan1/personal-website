@@ -62,8 +62,23 @@ export const SIM_FRAME_TIME = DT * SUBSTEPS;
 /** Simulation frames per second of real time, independent of display rate. */
 export const SIM_HZ = 60;
 
-/** A Chaotic Era the home world survives ends after this much sim time. */
-export const CHAOS_MAX = 18;
+/**
+ * A Chaotic Era the home world survives ends after this much sim time — which
+ * is to say, how long a civilisation has to hold its orbit to come through one.
+ *
+ * It was 18 while survival was decided by a single reading at the end. Judged
+ * over the whole era instead, 18 units of a PERTURBATION-sized kick is close
+ * to unsurvivable: measured across the report seeds, mortality went from 57%
+ * to 88%, and a Chaotic Era nothing lives through stops being a hazard and
+ * becomes a countdown. At 12 it is 66% — chaos still usually wins, which is
+ * the point of the place, but holding on is a real outcome rather than a
+ * rounding error.
+ *
+ * The kick was left alone deliberately. Weakening it would have bought the
+ * same mortality by making every era gentler, deaths included; shortening the
+ * window leaves the violence where it is and asks less of the survivors.
+ */
+export const CHAOS_MAX = 12;
 /** How long the suns take to orbit back onto the periodic solution. */
 export const SETTLE_TIME = 5;
 
@@ -124,12 +139,29 @@ export function escapeRadiusFor(orbit: Orbit): number {
  */
 export const SUN_ESCAPE_RADIUS = 6;
 /**
- * At the end of a Chaotic Era the home world must be within this fraction of
- * its own orbit for the civilisation to count as having survived. The upper
- * bound sits just inside ESCAPE_FACTOR, so a world beyond it has generally
- * escaped and died of cold already rather than waiting for the timeout.
+ * The home world must hold this fraction of its own orbit, at every moment of
+ * a Chaotic Era, for the civilisation to count as having survived.
+ *
+ * Both halves of that sentence are load-bearing.
+ *
+ * Every moment, because the test used to be read once, when the era's clock
+ * ran out: a world could be thrown right across the system and happen to be
+ * passing near its own radius at that instant. Measured over 75 simulated
+ * minutes, a third of all survivals left the frame entirely — for as long as
+ * 4.9s — and one passed within 0.002 of its own radius of the suns before
+ * coming back. On screen that is a world leaving the system, so the notice
+ * contradicted the animation it was describing.
+ *
+ * This fraction, because the band has to be wide enough to hold an undisturbed
+ * orbit and narrow enough that staying inside it reads as staying put. These
+ * orbits are ellipses: measured over eight pinned Stable Eras the
+ * figure-eight's home world runs [0.784, 1.003] of its radius and the moth's
+ * [0.948, 1.034], so nothing tighter than the wider of those can admit a world
+ * that nothing has happened to. At [0.7, 1.3] the figure-eight's home world
+ * may wander between 2.1 and 3.9 against a frame that reaches 4.45 — visibly
+ * pushed about, never leaving.
  */
-export const SURVIVABLE_BAND: readonly [number, number] = [0.55, 1.72];
+export const SURVIVABLE_BAND: readonly [number, number] = [0.7, 1.3];
 
 /**
  * A sun further out than this when a civilisation falls is pulled back before
@@ -296,6 +328,13 @@ export type System = {
   /** The last cause reported, so a repeat can be avoided where possible. */
   lastCause: CollapseCause | null;
   /**
+   * Set the first moment this era's chaos throws the home world outside
+   * SURVIVABLE_BAND, and cleared when a new era begins. Once set the
+   * civilisation cannot survive the era: its orbit is gone, whatever the world
+   * happens to be doing when the clock runs out.
+   */
+  orbitWrecked: boolean;
+  /**
    * Worlds that have been destroyed, kept only to fade out. Not simulated.
    * Without them a world and its trail blink out of existence the instant it
    * dies, which is the most abrupt thing that can happen on screen.
@@ -313,7 +352,7 @@ export type SimEvent =
   | { type: "era"; era: Era }
   | { type: "collapse"; civilization: number; cause: CollapseCause }
   /**
-   * The home world came through a Chaotic Era. Measured, 43% of them end this
+   * The home world came through a Chaotic Era. Measured, 34% of them end this
    * way, and without an event for it the outcome was reported by nothing —
    * indistinguishable on screen from a death whose notice had failed.
    */
@@ -384,6 +423,7 @@ export function createSystem(civilization = 1): System {
     heat: 0,
     timeScale: 1,
     lastCause: null,
+    orbitWrecked: false,
     ghosts: [],
     kick: null,
     kickRemaining: 0,
@@ -553,11 +593,23 @@ function fatesOf(planet: Planet, sys: System): CollapseCause[] {
  * not themselves lethal. A world dies of fire or cold; that its orbit was also
  * long past saving is equally true, and gives pickFate an honest alternative
  * to reach for rather than repeating the previous cause.
+ *
+ * Drift comes from the flag rather than from the world's radius at this
+ * instant, because an orbit is wrecked for the rest of the era from the moment
+ * it goes: a world swinging back through its own radius on its way somewhere
+ * else is not on that orbit any more, and reading only the instant let it deny
+ * on the way past what it had already done.
  */
-function describeFates(planet: Planet, sys: System, lethal: CollapseCause[]): CollapseCause[] {
+function describeFates(sys: System, lethal: CollapseCause[]): CollapseCause[] {
+  return sys.orbitWrecked ? [...lethal, "drift"] : lethal;
+}
+
+/** True while the home world is still on something like its own orbit. */
+function holdsItsOrbit(planet: Planet): boolean {
   const radius = Math.hypot(planet.x, planet.y);
-  const wrecked = radius < planet.home * SURVIVABLE_BAND[0] || radius > planet.home * SURVIVABLE_BAND[1];
-  return wrecked ? [...lethal, "drift"] : lethal;
+  return (
+    radius >= planet.home * SURVIVABLE_BAND[0] && radius <= planet.home * SURVIVABLE_BAND[1]
+  );
 }
 
 /**
@@ -791,9 +843,15 @@ export function advance(
     // Worlds are only at risk once the suns are actually moving freely.
     if (!settling) {
       const home = sys.planets[0];
+
+      // Read every frame rather than once at the end of the era, so that
+      // whether the civilisation survives is decided by the whole of what the
+      // visitor watched happen to its world.
+      if (sys.era === "chaotic" && !holdsItsOrbit(home)) sys.orbitWrecked = true;
+
       const homeFates = fatesOf(home, sys);
       if (homeFates.length > 0) {
-        const cause = pickFate(describeFates(home, sys, homeFates), sys.lastCause);
+        const cause = pickFate(describeFates(sys, homeFates), sys.lastCause);
         const destroyed = sys.civilization;
         events.push({ type: "collapse", civilization: destroyed, cause });
         resetInto(sys, destroyed + 1, cause);
@@ -836,6 +894,7 @@ export function advance(
         destabilise(sys, rand);
         sys.era = "chaotic";
         sys.eraElapsed = 0;
+        sys.orbitWrecked = false;
         events.push({ type: "era", era: "chaotic" });
       }
       continue;
@@ -844,16 +903,17 @@ export function advance(
     // Chaotic Era: long enough has passed for it to break, one way or another.
     if (sys.eraElapsed >= CHAOS_MAX) {
       const home = sys.planets[0];
-      const radius = Math.hypot(home.x, home.y);
 
-      // Surviving means the orbit is still recoverable. A world flung onto a
-      // wild ellipse hasn't survived in any meaningful sense — it just hasn't
-      // finished dying, and letting it through leaves it wandering far off
-      // screen during what the UI is calling a Stable Era.
-      if (radius < home.home * SURVIVABLE_BAND[0] || radius > home.home * SURVIVABLE_BAND[1]) {
+      // Surviving means the orbit was never lost — not that the world happens
+      // to be crossing its own radius now. A world flung onto a wild ellipse
+      // hasn't survived in any meaningful sense; it just hasn't finished
+      // dying, and letting one through on the strength of where it was at the
+      // final frame is how a civilisation came to be congratulated for an era
+      // it spent off screen.
+      if (sys.orbitWrecked) {
         // Whatever else is true of the world right now counts too, so a run of
         // timeouts doesn't report "drift" over and over.
-        const cause = pickFate(describeFates(home, sys, [...fatesOf(home, sys), "drift"]), sys.lastCause);
+        const cause = pickFate(describeFates(sys, fatesOf(home, sys)), sys.lastCause);
         const destroyed = sys.civilization;
         events.push({ type: "collapse", civilization: destroyed, cause });
         resetInto(sys, destroyed + 1, cause);

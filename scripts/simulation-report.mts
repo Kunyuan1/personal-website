@@ -20,7 +20,9 @@ import {
   SIM_FRAME_TIME,
   SIM_HZ,
   SUN_ESCAPE_RADIUS,
+  SURVIVABLE_BAND,
   type CollapseCause,
+  type Planet,
 } from "../src/lib/trisolaris.ts";
 
 const SEEDS = [99, 7, 2024, 5, 31415];
@@ -129,7 +131,7 @@ let outerWorldsLost = 0;
 let deaths = 0;
 let survivals = 0;
 let unfinishedChaos = 0;
-let ghostsCreated = 0;
+let deathsWithoutGhost = 0;
 let shortestTrailAfterCollapse = Infinity;
 let maxTrailExcess = 0;
 let maxSunRadius = 0;
@@ -139,15 +141,38 @@ let slowestRate = 1;
 let worstCrossing = Infinity;
 const noticeDelays: number[] = [];
 const causeCounts: Partial<Record<CollapseCause, number>> = {};
+// The worst any survivor did, over every Chaotic Era that was survived. A
+// survival is a claim about the animation as much as about the state: the
+// notice says the world came through, so the world has to have been visibly
+// there to come through. See SURVIVABLE_BAND.
+let survivorWorstHome = 0;
+let survivorWorstSun = 0;
+let survivorFramesOffScreen = 0;
 
 for (const seed of [...SEEDS]) {
   const sys = createSystem();
   const rand = mulberry32(seed);
-  let previousCause: CollapseCause | null = null;
+  // The last thing the notice said, which is not the same as the last cause:
+  // surviving a Chaotic Era puts a notice on screen too. Measuring
+  // collapse-to-collapse counted drift -> survived -> drift as the notice
+  // repeating itself when what the visitor read was three different sentences.
+  let previousNotice: CollapseCause | "survived" | null = null;
   let offScreenSince = -1;
   let simTime = 0;
+  // New ghosts are counted by identity, and compared against the number of
+  // deaths in the same frame. Watching the array merely grow could not tell
+  // one death from two: an outer world lost in the frame the home world falls
+  // grows it once, and the invariant read that as a world that had vanished
+  // without fading.
+  const seenGhosts = new WeakSet<Planet>();
 
   const prevSunPositions = sys.suns.map((s) => ({ x: s.x, y: s.y }));
+
+  // This era's worst so far, kept until the era resolves and only then charged
+  // to the outcome it resolved into.
+  let eraPeakHome = 0;
+  let eraPeakSun = 0;
+  let eraOffScreen = 0;
 
   for (let f = 0; f < MINUTES_PER_SEED * 60 * SIM_HZ; f++) {
     const visible = sys.orbit.worlds[sys.orbit.worlds.length - 1].r * 1.06;
@@ -155,20 +180,45 @@ for (const seed of [...SEEDS]) {
     if (homeRadius > visible && offScreenSince < 0) offScreenSince = simTime;
     if (homeRadius <= visible) offScreenSince = -1;
 
+    if (sys.era === "chaotic") {
+      eraPeakHome = Math.max(eraPeakHome, homeRadius / sys.planets[0].home);
+      for (const s of sys.suns) eraPeakSun = Math.max(eraPeakSun, Math.hypot(s.x, s.y) / visible);
+      if (homeRadius > visible) eraOffScreen++;
+    }
+
     // Read before the frame, not after: a collapse has already reset the era
     // by the time its event is handled. This is the era the UI was reporting
     // at the moment anything died in it.
     const stableBefore = sys.era === "stable" && sys.settle >= 1;
-    const ghostsBefore = sys.ghosts.length;
     const events = advance(sys, 1, rand);
     simTime += SIM_FRAME_TIME;
-    if (sys.ghosts.length > ghostsBefore) ghostsCreated++;
+    let newGhosts = 0;
+    for (const ghost of sys.ghosts) {
+      if (seenGhosts.has(ghost)) continue;
+      seenGhosts.add(ghost);
+      newGhosts++;
+    }
+    // A collapse retires every world still standing, not only the one that
+    // died, so this is >= rather than ===.
+    const deathsThisFrame = events.filter(
+      (e) => e.type === "collapse" || e.type === "worldLost",
+    ).length;
+    if (newGhosts < deathsThisFrame) deathsWithoutGhost += deathsThisFrame - newGhosts;
 
     for (const event of events) {
       if (event.type === "era") {
-        if (event.era === "chaotic") chaoticEras++;
+        if (event.era === "chaotic") {
+          chaoticEras++;
+          eraPeakHome = 0;
+          eraPeakSun = 0;
+          eraOffScreen = 0;
+        }
       } else if (event.type === "survived") {
         survivals++;
+        previousNotice = "survived";
+        survivorWorstHome = Math.max(survivorWorstHome, eraPeakHome);
+        survivorWorstSun = Math.max(survivorWorstSun, eraPeakSun);
+        survivorFramesOffScreen += eraOffScreen;
       } else if (event.type === "worldLost") {
         outerWorldsLost++;
         deaths++;
@@ -181,7 +231,7 @@ for (const seed of [...SEEDS]) {
         collapses++;
         deaths++;
         causeCounts[event.cause] = (causeCounts[event.cause] ?? 0) + 1;
-        if (event.cause === previousCause) repeats++;
+        if (event.cause === previousNotice) repeats++;
         if (stableBefore) deathsDuringStable++;
         // A collapse must always begin a settle; settle >= 1 means it didn't.
         if (sys.settle >= 1) collapsesWithoutSettle++;
@@ -190,7 +240,7 @@ for (const seed of [...SEEDS]) {
           ...sys.sunTrails.map((t) => t.length),
         );
         noticeDelays.push(offScreenSince >= 0 ? simTime - offScreenSince : 0);
-        previousCause = event.cause;
+        previousNotice = event.cause;
         offScreenSince = -1;
       } else {
         // Exhaustive on purpose. This chain used to end in a bare `else` that
@@ -246,7 +296,12 @@ const repeatRate = Math.round((repeats / collapses) * 100);
 
 record("deaths during a Stable Era", deathsDuringStable, "0", deathsDuringStable === 0);
 record("collapses without a settle", collapsesWithoutSettle, "0", collapsesWithoutSettle === 0);
-record("every death leaves a ghost", `${ghostsCreated}/${deaths}`, "equal", ghostsCreated === deaths);
+record(
+  "every death leaves a ghost",
+  `${deaths - deathsWithoutGhost}/${deaths}`,
+  "equal",
+  deathsWithoutGhost === 0,
+);
 record(
   "sun trails survive a collapse",
   `${shortestTrailAfterCollapse} points`,
@@ -257,9 +312,35 @@ record("max sun radius", round(maxSunRadius), `<= ${SUN_ESCAPE_RADIUS}`, maxSunR
 record("any world while stable", `x${round(maxWorldWhileStable)}`, "< x1.10", maxWorldWhileStable < 1.1);
 record("worst on-screen crossing", `${round(worstCrossing, 2)}s`, "> 1.0s", worstCrossing > 1);
 record("all five causes occur", Object.keys(causeCounts).length, "5", Object.keys(causeCounts).length === 5);
-record("consecutive repeats", `${repeats}/${collapses} (${repeatRate}%)`, "< 20%", repeatRate < 20);
+record("consecutive notices repeating", `${repeats}/${collapses} (${repeatRate}%)`, "< 20%", repeatRate < 20);
 record("notice delay after leaving view", `mean ${toSeconds(meanDelay)}s`, "< 2.0s", toSeconds(meanDelay) < 2);
 record("mortality", `${mortality}%`, "40-80%", mortality >= 40 && mortality <= 80);
+// What "survived" has to mean on screen. Before survival was judged over the
+// whole era rather than at its last frame, the worst survivor peaked at 1.717x
+// its own radius — 1.24x the frame — and survivors spent 20 eras' worth of
+// time off screen entirely, up to 4.9s at a stretch.
+record(
+  "a survivor holds its orbit",
+  `worst x${round(survivorWorstHome)}`,
+  `<= x${SURVIVABLE_BAND[1]}`,
+  survivorWorstHome <= SURVIVABLE_BAND[1] + 1e-9,
+);
+record(
+  "a survivor never leaves the frame",
+  `${survivorFramesOffScreen} frames`,
+  "0",
+  survivorFramesOffScreen === 0,
+);
+// Not enforced anywhere in the simulation: a Chaotic Era mild enough for the
+// home world to hold its orbit is one the suns did not run wild in either.
+// Asserted because it is the other half of what the notice implies, and
+// because nothing else would notice if it stopped being true.
+record(
+  "a survivor's suns stay in frame",
+  `worst x${round(survivorWorstSun)}`,
+  "< x1.0",
+  survivorWorstSun < 1,
+);
 // A Chaotic Era has exactly two endings and both are announced. Surviving used
 // to be reported by nothing at all, which on screen was indistinguishable from
 // a death whose notice had failed — so assert every era reaches one of them.
