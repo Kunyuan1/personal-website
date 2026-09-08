@@ -4,7 +4,7 @@ import { useEra } from "@/components/EraProvider";
 import { site } from "@/data/site";
 
 export default function Footer() {
-  const { stabilised, setStabilised, civilization, dehydrated } = useEra();
+  const { stabilised, setStabilised, civilization } = useEra();
 
   return (
     <footer className="relative z-10 border-t border-line">
@@ -31,20 +31,6 @@ export default function Footer() {
             >
               {stabilised ? "Allow Chaotic Eras" : "Hold Stable Era"}
             </button>
-
-            {/* 脱水 — what the Trisolarans do to survive a Chaotic Era: expel
-                every drop of water and wait it out as a dry roll of parchment.
-                It is what this page does with a hidden tab, so it is what the
-                readout says. Barely ever legible, since a hidden tab is not
-                painted — it is up for the moment of the return, and for anyone
-                watching this window from beside another one. */}
-            {dehydrated && (
-              <p className="font-mono text-xs text-faint/70" title="Dehydrated.">
-                <span className="cjk">脱水</span>
-                <span className="mx-2 text-line-bright">·</span>
-                dry
-              </p>
-            )}
 
             {/* 不要回答 — the warning sent back across four light years. */}
             <p
