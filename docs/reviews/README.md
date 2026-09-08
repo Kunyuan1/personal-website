@@ -43,10 +43,19 @@ Other checks worth running:
 
 ```bash
 npm run check:glyphs     # every Chinese glyph is in the font subset
+npx next typegen         # tsc needs this on a fresh clone — see below
 npx tsc --noEmit
 npx eslint .
 npx next build
 ```
+
+`next typegen` first, and only `tsc` needs it. `next-env.d.ts` and
+`.next/types` are generated and both gitignored, so on a checkout that has
+never been built there are no declarations for image imports and no
+`LayoutProps`: `tsc --noEmit` reports 14 errors that are not real. It has only
+ever passed because every machine anyone ran it on had already run `next dev`.
+Running `next build` first works too — it generates the same types — but
+typegen is seconds rather than a full build.
 
 ## Keeping resolved findings
 

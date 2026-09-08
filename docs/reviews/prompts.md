@@ -44,11 +44,18 @@ Three files, with a strict separation:
 
 ```
 npm install
-npm run sim:report      # the important one: ~1-2 min, 22 invariants
+npm run sim:report      # the important one: ~1-2 min, 29 invariants
+npx next typegen        # required before tsc on a fresh clone
 npx tsc --noEmit
 npx eslint .
 npx next build
 ```
+
+Run `next typegen` before `tsc`, or you will start the review by reading 14
+errors that are not real. `next-env.d.ts` and `.next/types` are generated and
+gitignored, so a fresh clone has no declarations for image imports and no
+`LayoutProps`. This is a fresh session in a fresh checkout, which is exactly
+the case that hits it.
 
 `npm run sim:report` simulates 75 minutes across five fixed seeds and prints a
 pass/fail table. It exits non-zero if any invariant fails. Everything below
@@ -195,6 +202,7 @@ Run first:
 
 ```
 npm run check:glyphs
+npx next typegen
 npx tsc --noEmit
 npx eslint .
 npx next build
