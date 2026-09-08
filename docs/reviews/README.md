@@ -73,3 +73,4 @@ what stops the next.
 | 2026-09-05 | [Simulation](./2026-09-05-simulation.md) | All 6 findings fixed; harness now 17/17, with the original 14 unchanged; plus a `syzygy` reproduction (seed 2 @ 84.3s) |
 | 2026-09-06 | [More worlds](./2026-09-06-more-worlds.md) | All 5 findings fixed; harness now 21/21, and every world in `ORBITS` is measured rather than just Trisolaris |
 | 2026-09-07 | [Survival notice](./2026-09-07-survival-notice.md) | All 5 findings fixed; harness now 22/22, and `tsc` covers `scripts/` for the first time |
+| 2026-09-08 | [Survival band](./2026-09-08-survival-band.md) | 2 of 4 fixed; harness now 25/25, and the ghost invariant catches a planted missing ghost it used to pass. Two open: mortality is 95% on the figure-eight against 50% on the moth, and `drift` is now 54% of causes |
