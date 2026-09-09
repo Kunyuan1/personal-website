@@ -7,9 +7,14 @@
    which keeps the suns' periodic solution exact.
 
    In the novel the system began with twelve planets and the suns swallowed
-   eleven of them, leaving only Trisolaris. Here each civilisation starts
-   with a few worlds; the Chaotic Eras take them one at a time, and the
-   civilisation ends when the home world itself is destroyed.
+   eleven of them, leaving only Trisolaris. That division is kept here. The
+   outer worlds are destroyed — swallowed or thrown clear — one at a time,
+   which is what happened to the eleven. Trisolaris is not. A civilisation on
+   it ends when the sky it stands under becomes unliveable for long enough:
+   too much light, too little, or an orbit too wrecked to dehydrate through.
+   The world survives every one of them, as it does for two hundred
+   civilisations in the books, and the counter is counting civilisations
+   rather than planets.
 
    Stable Era  — the suns run a genuine periodic solution, so the orbit
                  closes on itself and the worlds hold their paths.
@@ -97,6 +102,63 @@ export const PERTURBATION = 0.8;
  * closed orbit and then, between two frames, they are not.
  */
 export const PERTURB_RAMP = 1.4;
+/**
+ * What a Chaotic Era does to the people living through it.
+ *
+ * A civilisation is not ended by a distance. It is ended by standing in too
+ * much light or too little of it, for too long — which is what the books
+ * describe and what the visitor is actually watching. Both thresholds are
+ * multiples of the home world's *own* Stable Era flux band, because the two
+ * periodic solutions are not remotely comparable in absolute terms: the
+ * figure-eight's home world sits in [0.377, 0.825] and the moth's in
+ * [0.137, 0.170], a factor of two to five. A single absolute number would
+ * mean "balmy" on one solution and "already dead" on the other.
+ *
+ * SCORCH_MULTIPLE is read against the top of that band, FREEZE_FRACTION
+ * against the bottom.
+ */
+export const SCORCH_MULTIPLE = 2;
+export const FREEZE_FRACTION = 0.55;
+/**
+ * How much simulation time beyond either threshold ends the civilisation.
+ *
+ * Exposure, not an instant. A civilisation dies of a scorching *period*: the
+ * old model killed a world the frame it came within BURN_RADIUS of a sun,
+ * which made a fast slingshot past a star indistinguishable from falling into
+ * one. With a dwell, a close pass is survivable if it is quick — which is a
+ * better thing to watch and a truer thing to claim.
+ */
+export const LETHAL_EXPOSURE = 1;
+/**
+ * How much of a lethal dose must have been delivered while all three suns were
+ * bunched together for the death to be reported as a tri-solar day.
+ *
+ * A conjunction is not a separate way to die — it is an enormous flux reading,
+ * so it already kills through heat. What it needs is to be *nameable*, and
+ * naming it from the geometry at the instant of death did not work: the dose
+ * takes LETHAL_EXPOSURE to deliver and the suns have usually dispersed by the
+ * time it lands, so syzygy went from rare to never. Tracked as a share of the
+ * dose instead, it names the thing that actually did the killing.
+ */
+export const SYZYGY_SHARE = 0.5;
+/**
+ * What makes heat a tri-solar day rather than a close pass: no single sun
+ * supplying more than this share of the flux, so the world is being cooked by
+ * the group.
+ *
+ * This replaces a geometric test — all three suns within SYZYGY_SPREAD of each
+ * other and the world within SYZYGY_RANGE — which was measured to be
+ * unreachable under an exposure model. Three suns bunched at the edge of that
+ * range deliver a flux of about 1.04, and the figure-eight's scorch threshold
+ * is 2.475, so the geometry that was called a tri-solar day could not actually
+ * scorch anyone: over 75 simulated minutes the conjunction never once
+ * coincided with lethal heat, and syzygy went from rare to impossible.
+ *
+ * Asking where the heat is coming from is both the better test and the more
+ * literal one. A tri-solar day is three suns in the sky at once.
+ */
+export const SYZYGY_DOMINANCE = 0.6;
+
 /** How long a destroyed world and its trail take to fade out. */
 export const WORLD_FADE_TIME = 1.6;
 
@@ -185,10 +247,6 @@ export const SETTLE_START_RADIUS = SUN_ESCAPE_RADIUS;
 
 /** Inside this of any sun, a planet is consumed. */
 export const BURN_RADIUS = 0.22;
-/** Suns closer together than this count as a conjunction — a tri-solar day. */
-export const SYZYGY_SPREAD = 0.75;
-/** How near the home world must be to a conjunction to be cooked by it. */
-export const SYZYGY_RANGE = 1.7;
 
 export const SUN_COLORS = ["#e6a94c", "#7fb2ff", "#d4544a"] as const;
 /** The home world. Deliberately the brightest, coolest thing on screen. */
@@ -258,6 +316,13 @@ export type Orbit = {
    * see the 2026-09-08 review.
    */
   homeExcursion: readonly [number, number];
+  /**
+   * The flux the home world stands in over an undisturbed Stable Era — the
+   * light this civilisation evolved under, and the band SCORCH_MULTIPLE and
+   * FREEZE_FRACTION are read against. Measured and asserted by the pinned rig
+   * in `npm run sim:report`, the same way `homeExcursion` is.
+   */
+  homeFlux: readonly [number, number];
   /** How long this orbit's Stable Era runs, in simulation time. */
   stableDuration: number;
 };
@@ -278,6 +343,7 @@ export const ORBITS: readonly Orbit[] = [
       { r: 4.2, angle: 288 },
     ],
     homeExcursion: [0.784, 1.003],
+    homeFlux: [0.3773, 0.825],
     stableDuration: 16,
   },
   {
@@ -294,11 +360,30 @@ export const ORBITS: readonly Orbit[] = [
       { r: 6.0, angle: 270 },
     ],
     homeExcursion: [0.948, 1.034],
+    homeFlux: [0.1373, 0.1701],
     stableDuration: 20,
   },
 ];
 
-export type CollapseCause = "fire" | "cold" | "starless" | "syzygy" | "drift";
+/**
+ * How a *civilisation* ended. Not how a planet was destroyed — Trisolaris is
+ * never destroyed here, any more than it is in the books, where eleven sibling
+ * worlds were swallowed and the twelfth carried two hundred civilisations
+ * through fire, ice and dehydration without ever being lost itself.
+ *
+ * `fire` and `cold` used to live in this list and were the deaths of the
+ * eleven, wrongly attached to the one. They are now what `isDestroyed` tests
+ * for the outer worlds, and they never end a civilisation.
+ *
+ * `starless` is gone entirely rather than reworded. It fired when any sun
+ * passed radius 6 from the centre, which measures nothing about the world: at
+ * the moment it triggered, the home world's median flux was 0.160, inside the
+ * moth's ordinary Stable Era band of [0.137, 0.170]. It ended civilisations
+ * that were standing in perfectly good light, and it ended every world at once
+ * wherever any of them happened to be. Flux is the thing it was failing to
+ * measure.
+ */
+export type CollapseCause = "scorched" | "frozen" | "syzygy" | "drift";
 
 export type Planet = Body & {
   /** The radius this world was placed at. */
@@ -366,6 +451,16 @@ export type System = {
    */
   orbitWrecked: boolean;
   /**
+   * Simulation time this civilisation has spent beyond either flux threshold,
+   * reset when a new Chaotic Era begins. Either reaching LETHAL_EXPOSURE ends
+   * it. Accumulated rather than latched on a single frame, so a fast pass
+   * close to a sun is survivable and a long one is not.
+   */
+  heatExposure: number;
+  coldExposure: number;
+  /** How much of the heat above was taken with all three suns in conjunction. */
+  syzygyDose: number;
+  /**
    * Worlds that have been destroyed, kept only to fade out. Not simulated.
    * Without them a world and its trail blink out of existence the instant it
    * dies, which is the most abrupt thing that can happen on screen.
@@ -383,7 +478,7 @@ export type SimEvent =
   | { type: "era"; era: Era }
   | { type: "collapse"; civilization: number; cause: CollapseCause }
   /**
-   * The home world came through a Chaotic Era. Measured, 33% of them end this
+   * The home world came through a Chaotic Era. Measured, 24% of them end this
    * way, and without an event for it the outcome was reported by nothing —
    * indistinguishable on screen from a death whose notice had failed.
    */
@@ -455,6 +550,9 @@ export function createSystem(civilization = 1): System {
     timeScale: 1,
     lastCause: null,
     orbitWrecked: false,
+    heatExposure: 0,
+    coldExposure: 0,
+    syzygyDose: 0,
     ghosts: [],
     kick: null,
     kickRemaining: 0,
@@ -586,36 +684,56 @@ function timeScaleFor(sys: System): number {
   return Math.max(MIN_TIME_SCALE, SPEED_REFERENCE / fastest);
 }
 
-/** Largest distance between any two suns — small means a conjunction. */
-function sunSpread(suns: Body[]): number {
-  let max = 0;
-  for (let i = 0; i < suns.length; i++) {
-    for (let j = i + 1; j < suns.length; j++) {
-      max = Math.max(max, Math.hypot(suns[i].x - suns[j].x, suns[i].y - suns[j].y));
-    }
+/**
+ * The light this world is standing in: the sum of inverse-square flux from all
+ * three suns, in units where each sun radiates 1.
+ *
+ * This is what a Chaotic Era actually does to a civilisation. Distance to the
+ * nearest sun cannot express it — a world can be far from one sun and cooked
+ * by the other two, or close to one and freezing because it is the only one
+ * left in reach. Softened by the same PLANET_SOFTENING the force law uses, so
+ * a near miss is a very large number rather than an infinite one.
+ */
+export function fluxOn(planet: Point, suns: Body[]): number {
+  let total = 0;
+  for (const sun of suns) {
+    const dx = sun.x - planet.x;
+    const dy = sun.y - planet.y;
+    total += 1 / (dx * dx + dy * dy + PLANET_SOFTENING * PLANET_SOFTENING);
   }
-  return max;
+  return total;
 }
 
 /**
- * Every fate that is true of this world right now, read from the state rather
- * than picked at random. More than one can apply at once — a world falling
- * into a sun during a conjunction is both burning and caught in a syzygy.
+ * Whether this world has been physically destroyed: swallowed by a sun, or
+ * thrown clear of the system into the dark.
+ *
+ * This is what happened to the eleven siblings, and it is the only thing that
+ * happens to the outer worlds here. It is deliberately not applied to
+ * Trisolaris. A civilisation on it dies of what the sky does to it — see
+ * `civilisationFates` — while the world itself goes on, which is the whole
+ * arrangement the books describe.
  */
-function fatesOf(planet: Planet, sys: System): CollapseCause[] {
+function isDestroyed(planet: Planet, sys: System): boolean {
   const nearest = Math.min(
     ...sys.suns.map((s) => Math.hypot(s.x - planet.x, s.y - planet.y)),
   );
-  const fates: CollapseCause[] = [];
+  if (nearest < BURN_RADIUS) return true;
+  return Math.hypot(planet.x, planet.y) > escapeRadiusFor(sys.orbit);
+}
 
-  // A tri-solar day: all three suns bunched together with the world close by.
-  // It doesn't have to fall into one of them to be cooked.
-  if (sunSpread(sys.suns) < SYZYGY_SPREAD && nearest < SYZYGY_RANGE) fates.push("syzygy");
-  if (nearest < BURN_RADIUS) fates.push("fire");
-  const radius = Math.hypot(planet.x, planet.y);
-  if (radius > escapeRadiusFor(sys.orbit)) fates.push("cold");
-  // A sun escaping strands every world in the dark just as surely.
-  if (sys.suns.some((s) => Math.hypot(s.x, s.y) > SUN_ESCAPE_RADIUS)) fates.push("starless");
+/**
+ * Every way this civilisation is currently dying, from accumulated exposure
+ * rather than from where the world is standing this instant.
+ *
+ * Both can hold at once — an era that froze a civilisation half to death and
+ * then threw it past a sun is honestly described either way, and pickFate has
+ * two true things to choose between rather than repeating itself.
+ */
+function civilisationFates(sys: System): CollapseCause[] {
+  const fates: CollapseCause[] = [];
+  if (sys.heatExposure >= LETHAL_EXPOSURE) fates.push("scorched");
+  if (sys.coldExposure >= LETHAL_EXPOSURE) fates.push("frozen");
   return fates;
 }
 
@@ -632,7 +750,21 @@ function fatesOf(planet: Planet, sys: System): CollapseCause[] {
  * on the way past what it had already done.
  */
 function describeFates(sys: System, lethal: CollapseCause[]): CollapseCause[] {
-  return sys.orbitWrecked ? [...lethal, "drift"] : lethal;
+  // A tri-solar day is a description of *how* the sky killed you, not a
+  // separate way of dying: three suns bunched with the world close by is an
+  // enormous flux reading, so it already registers as heat. Naming it when the
+  // geometry actually holds keeps the most famous disaster in the books
+  // reportable without it being a second lethal path nobody could audit.
+  //
+  // It goes *first*, ahead of the exposure that did the killing, because it is
+  // strictly the more specific truth: "scorched" and "all three suns rose at
+  // once" describe the same death, and only one of them says which. Appended
+  // last it was unreachable — pickFate takes the first fate that is not a
+  // repeat, and the lethal cause is always in front of it.
+  const conjunction = sys.syzygyDose >= LETHAL_EXPOSURE * SYZYGY_SHARE;
+  const fates: CollapseCause[] = conjunction ? ["syzygy", ...lethal] : [...lethal];
+  if (sys.orbitWrecked) fates.push("drift");
+  return fates;
 }
 
 /** True while the home world is still on something like its own orbit. */
@@ -740,14 +872,21 @@ function resetInto(sys: System, civilization: number, cause: CollapseCause) {
   const from = sys.suns.map((s) => ({ ...s }));
   const heat = sys.heat;
   const pinned = sys.pinned;
+  // Trisolaris itself, carried across rather than retired. See below.
+  const survivingHome = { ...sys.planets[0] };
 
   // Everything still standing fades out rather than disappearing, and the sun
   // trails carry over — clearing them made the figure-eight blink out of
   // existence on every collapse.
+  //
+  // The home world is the exception, and it is the point of the whole model:
+  // a civilisation ended, not a planet. Ghosting Trisolaris here made every
+  // notice a lie — the text said the people were gone while the animation
+  // faded out the world underneath them, and then produced a fresh one.
   const ghosts = [
     ...sys.ghosts,
     ...sys.planets
-      .filter((pl) => pl.alive)
+      .filter((pl) => pl.alive && !pl.isHome)
       .map((pl) => ({ ...pl, trail: pl.trail.slice(), fade: 1 })),
   ];
   const sunTrails = sys.sunTrails.map((t) => t.slice());
@@ -772,6 +911,25 @@ function resetInto(sys: System, civilization: number, cause: CollapseCause) {
   // frame edge first and glides in from there — skipping the settle for those
   // was what made an escaped sun snap the whole system back into place.
   beginSettle(sys);
+
+  // Trisolaris resumes from exactly where the last civilisation left it, and
+  // the settle carries it into its place in the new configuration — the same
+  // blend that already brings survivors back onto canonical angles. So the
+  // world is visibly the same world: it is thrown into a new orbit as the suns
+  // re-form around it, rather than dying and being replaced by a copy.
+  //
+  // Its trail comes too. That trail is the only unbroken thing on screen
+  // across a collapse, and it is what makes the continuity legible instead of
+  // merely true.
+  Object.assign(sys.planets[0], {
+    x: survivingHome.x,
+    y: survivingHome.y,
+    vx: survivingHome.vx,
+    vy: survivingHome.vy,
+    ax: survivingHome.ax,
+    ay: survivingHome.ay,
+    trail: survivingHome.trail.slice(),
+  });
   for (let i = 0; i < sys.suns.length; i++) {
     const s = from[i];
     const d = Math.hypot(s.x, s.y);
@@ -856,6 +1014,30 @@ export function advance(
       recordTrails(sys);
       sys.eraElapsed += advanced;
       sys.timeScale = advanced / SIM_FRAME_TIME;
+
+      // Charged in simulation time, not frames: the step shrinks during a
+      // close encounter, so counting frames would bill a slingshot past a sun
+      // for several times the heat it actually delivered. Only during a
+      // Chaotic Era — a Stable Era is, by construction, inside the band.
+      if (sys.era === "chaotic") {
+        const home = sys.planets[0];
+        const [coolest, warmest] = sys.orbit.homeFlux;
+        const flux = fluxOn(home, sys.suns);
+        if (flux > warmest * SCORCH_MULTIPLE) {
+          sys.heatExposure += advanced;
+          // Where is it coming from? If no one sun dominates, three of them
+          // are in the sky at once and this is the tri-solar day.
+          let strongest = 0;
+          for (const sun of sys.suns) {
+            const dx = sun.x - home.x;
+            const dy = sun.y - home.y;
+            strongest = Math.max(strongest, 1 / (dx * dx + dy * dy + PLANET_SOFTENING ** 2));
+          }
+          if (strongest / flux < SYZYGY_DOMINANCE) sys.syzygyDose += advanced;
+        } else if (flux < coolest * FREEZE_FRACTION) {
+          sys.coldExposure += advanced;
+        }
+      }
     }
 
     if (settling) {
@@ -880,7 +1062,7 @@ export function advance(
       // visitor watched happen to its world.
       if (sys.era === "chaotic" && !holdsItsOrbit(home)) sys.orbitWrecked = true;
 
-      const homeFates = fatesOf(home, sys);
+      const homeFates = civilisationFates(sys);
       if (homeFates.length > 0) {
         const cause = pickFate(describeFates(sys, homeFates), sys.lastCause);
         const destroyed = sys.civilization;
@@ -893,7 +1075,7 @@ export function advance(
       for (let i = 1; i < sys.planets.length; i++) {
         const world = sys.planets[i];
         if (!world.alive) continue;
-        if (fatesOf(world, sys).length > 0) {
+        if (isDestroyed(world, sys)) {
           killWorld(sys, world);
           events.push({
             type: "worldLost",
@@ -926,15 +1108,39 @@ export function advance(
         sys.era = "chaotic";
         sys.eraElapsed = 0;
         sys.orbitWrecked = false;
+        sys.heatExposure = 0;
+        sys.coldExposure = 0;
+        sys.syzygyDose = 0;
         events.push({ type: "era", era: "chaotic" });
       }
       continue;
     }
 
-    // Chaotic Era: long enough has passed for it to break, one way or another.
-    if (sys.eraElapsed >= CHAOS_MAX) {
-      const home = sys.planets[0];
+    // Chaotic Era: it breaks when the clock runs out, or the moment the suns
+    // themselves come apart.
+    //
+    // The second half of that used to be `starless`, which killed the
+    // civilisation outright when a sun passed SUN_ESCAPE_RADIUS. That was
+    // wrong about the people — measured, the home world's flux at the moment
+    // it fired was 0.160, squarely inside the moth's ordinary Stable Era band
+    // — but it was doing a second job nobody had written down: it was the only
+    // thing that ever brought a wandering sun back. Deleting it as a cause and
+    // not replacing it as a *terminator* let the suns drift past 6 and off the
+    // frame, and took two unrelated invariants red.
+    //
+    // So the era ends here and the system re-forms, while what became of the
+    // civilisation is still decided by exposure and by its orbit. If neither
+    // condemns it, a sun wandering off is something it lives through.
+    const sunsComeApart = sys.suns.some(
+      (s) => Math.hypot(s.x, s.y) > SUN_ESCAPE_RADIUS,
+    );
+    // An orbit around three suns that are no longer a system is not an orbit
+    // this civilisation can be said to have held. Without this a survival
+    // notice could land over a frame with a sun missing from it, which is the
+    // same lie the whole-era test was added to stop.
+    if (sunsComeApart) sys.orbitWrecked = true;
 
+    if (sys.eraElapsed >= CHAOS_MAX || sunsComeApart) {
       // Surviving means the orbit was never lost — not that the world happens
       // to be crossing its own radius now. A world flung onto a wild ellipse
       // hasn't survived in any meaningful sense; it just hasn't finished
@@ -944,7 +1150,7 @@ export function advance(
       if (sys.orbitWrecked) {
         // Whatever else is true of the world right now counts too, so a run of
         // timeouts doesn't report "drift" over and over.
-        const cause = pickFate(describeFates(sys, fatesOf(home, sys)), sys.lastCause);
+        const cause = pickFate(describeFates(sys, []), sys.lastCause);
         const destroyed = sys.civilization;
         events.push({ type: "collapse", civilization: destroyed, cause });
         resetInto(sys, destroyed + 1, cause);

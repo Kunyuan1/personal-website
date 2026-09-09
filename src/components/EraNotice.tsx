@@ -9,28 +9,37 @@ import type { CollapseCause } from "@/lib/trisolaris";
  * How a Chaotic Era ended — both ways.
  *
  * A Chaotic Era resolves into exactly one of two outcomes, and measured across
- * the report seeds the home world survives 33% of them. Only the deaths used to
+ * the report seeds the home world survives 24% of them. Only the deaths used to
  * be announced, so a survival was signalled by nothing at all: the same fade
  * from red to black, the same worlds fading back in, and no text. From the
  * outside that is indistinguishable from a disaster whose notice failed, which
  * is exactly how it was read.
  */
+/**
+ * What ended a civilisation — never what ended the world.
+ *
+ * Every line here used to be able to contradict the animation behind it. Two
+ * of the five described Trisolaris being destroyed, and then the counter
+ * calmly went to the next civilisation: the world fell into a sun, and there
+ * was another one along in thirty seconds. In the books the planet is the one
+ * thing that survives. Eleven siblings were swallowed; the twelfth carried two
+ * hundred civilisations through fire, ice and dehydration and was still there.
+ *
+ * So these say what happened to the people. The world going on without them is
+ * the point, and is why none of them claim it ended.
+ */
 const FATES: Record<CollapseCause, { cjk: string; text: string }> = {
-  fire: {
-    cjk: "烈焰",
-    text: "The world fell into a sun and burned.",
+  scorched: {
+    cjk: "烈日",
+    text: "The suns closed in and would not leave. Everything under them burned away.",
+  },
+  frozen: {
+    cjk: "严寒",
+    text: "The suns drew off, and the long night outlasted everyone sheltering under it.",
   },
   syzygy: {
     cjk: "三日连珠",
-    text: "All three suns rose together. The world was consumed by the tri-solar day.",
-  },
-  cold: {
-    cjk: "严寒",
-    text: "The world was flung out of the system, into the cold of the outer dark.",
-  },
-  starless: {
-    cjk: "恒星流散",
-    text: "One of the suns escaped, and the world froze in the long night that followed.",
+    text: "All three suns rose at once. The tri-solar day left nothing standing.",
   },
   drift: {
     cjk: "脱水",
