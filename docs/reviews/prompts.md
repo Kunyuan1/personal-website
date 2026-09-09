@@ -44,7 +44,7 @@ Three files, with a strict separation:
 
 ```
 npm install
-npm run sim:report      # the important one: ~1-2 min, 29 invariants
+npm run sim:report      # the important one: ~10s, 29 invariants
 npx next typegen        # required before tsc on a fresh clone
 npx tsc --noEmit
 npx eslint .
