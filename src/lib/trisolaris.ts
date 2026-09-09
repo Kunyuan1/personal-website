@@ -195,6 +195,27 @@ export const ESCAPE_FACTOR = 1.32;
 export function escapeRadiusFor(orbit: Orbit): number {
   return orbit.worlds[orbit.worlds.length - 1].r * ESCAPE_FACTOR;
 }
+
+/**
+ * The frame the visitor is actually looking at, as a radius in world units.
+ *
+ * SystemCanvas sizes the view from the outermost world plus this margin, and
+ * the harness calls the same function to decide whether a body is on screen.
+ * It lives here, exported, because the simulation now has to know where the
+ * picture ends: a Chaotic Era is over once the world it is about to be judged
+ * on has left it, and there is no honest way to assert that against a number
+ * three files each write down separately.
+ *
+ * It is a radius against a rectangle, so it is the conservative reading —
+ * a body at this distance is off screen vertically and may still be visible to
+ * the side.
+ */
+export const FRAME_MARGIN = 1.06;
+
+export function frameRadiusFor(orbit: Orbit): number {
+  return orbit.worlds[orbit.worlds.length - 1].r * FRAME_MARGIN;
+}
+
 /**
  * Beyond this a sun has escaped and the system has come apart. Without this
  * check the suns wander to hundreds of world units and leave the frame.
@@ -478,7 +499,7 @@ export type SimEvent =
   | { type: "era"; era: Era }
   | { type: "collapse"; civilization: number; cause: CollapseCause }
   /**
-   * The home world came through a Chaotic Era. Measured, 24% of them end this
+   * The home world came through a Chaotic Era. Measured, 25% of them end this
    * way, and without an event for it the outcome was reported by nothing —
    * indistinguishable on screen from a death whose notice had failed.
    */
@@ -713,6 +734,27 @@ export function fluxOn(planet: Point, suns: Body[]): number {
  * Trisolaris. A civilisation on it dies of what the sky does to it — see
  * `civilisationFates` — while the world itself goes on, which is the whole
  * arrangement the books describe.
+ *
+ * BURN_RADIUS is a near miss rather than a collision because the suns have no
+ * radius in the *physics* — they are point masses softened by SUN_SOFTENING.
+ * That is knowingly not true of the canvas, and the gap is worth stating rather
+ * than leaving as a claim a reader can measure and find false: SystemCanvas
+ * draws a sun as a 4.4px core inside a 34px corona, and measured over the
+ * report seeds the home world passes within 0.0098 world units of a sun's
+ * centre — 0.6px at a 1600x900 hero — and spends 148 frames inside BURN_RADIUS.
+ * Trisolaris is drawn inside the disc of a star and comes out alive.
+ *
+ * Accepted, on two grounds. Surviving a fast close pass is the intended
+ * behaviour and the reason exposure replaced a radius test at all — a floor
+ * loose enough to catch this pass is BURN_RADIUS again, which is the model this
+ * one replaced. And any floor tight enough to mean "inside the drawn disc" is a
+ * pixel radius that moves with the hero's size: 0.051 world units on the
+ * figure-eight against 0.068 on the moth at 1600x900, and different again at
+ * every other width, so it cannot be written down here honestly. What the
+ * canvas does have is additive blending, and the sun is drawn over the worlds:
+ * inside the corona the world is swamped rather than drawn on top of a star, so
+ * what is on screen is a world going in and coming out. See the 2026-09-09
+ * findings review.
  */
 function isDestroyed(planet: Planet, sys: System): boolean {
   const nearest = Math.min(
@@ -761,7 +803,16 @@ function describeFates(sys: System, lethal: CollapseCause[]): CollapseCause[] {
   // once" describe the same death, and only one of them says which. Appended
   // last it was unreachable — pickFate takes the first fate that is not a
   // repeat, and the lethal cause is always in front of it.
-  const conjunction = sys.syzygyDose >= LETHAL_EXPOSURE * SYZYGY_SHARE;
+  //
+  // Only over a death by heat. syzygyDose only accumulates inside the heat
+  // branch, so it is a share of the *heat* dose — and applied to whatever
+  // `lethal` happened to hold it renamed deaths that were not heat deaths
+  // at all: cook the world under a conjunction to half a dose, then fling it
+  // out until the cold finishes it, and the notice said all three suns rose at
+  // once about a civilisation that froze. Measured, 1 of 14 syzygy notices, and
+  // the same path let a timeout be reported as a tri-solar day on sub-lethal heat.
+  const conjunction =
+    lethal.includes("scorched") && sys.syzygyDose >= LETHAL_EXPOSURE * SYZYGY_SHARE;
   const fates: CollapseCause[] = conjunction ? ["syzygy", ...lethal] : [...lethal];
   if (sys.orbitWrecked) fates.push("drift");
   return fates;
@@ -848,7 +899,11 @@ function recordTrails(sys: System) {
   for (const p of sys.planets) {
     if (!p.alive) continue;
     p.trail.push({ x: p.x, y: p.y });
-    if (p.trail.length > sys.planetTrailLength) p.trail.shift();
+    // Down to the limit, for the same reason the sun trails are: one point a
+    // frame never drains a trail that arrived over the new orbit's limit.
+    if (p.trail.length > sys.planetTrailLength) {
+      p.trail.splice(0, p.trail.length - sys.planetTrailLength);
+    }
   }
 }
 
@@ -928,7 +983,13 @@ function resetInto(sys: System, civilization: number, cause: CollapseCause) {
     vy: survivingHome.vy,
     ax: survivingHome.ax,
     ay: survivingHome.ay,
-    trail: survivingHome.trail.slice(),
+    // Down to the new orbit's limit, not merely copied. A collapse switches
+    // solution, and moth -> figure-eight drops planetTrailLength from 691 to
+    // 364 — a difference recordTrails can never drain, because push-then-shift
+    // -one nets zero. Measured, the home world carried a trail 90% over its
+    // limit for 31% of a 75-minute run. It is the same failure the sun trails
+    // are truncated for above; the home world got the copy and not the cut.
+    trail: survivingHome.trail.slice(-sys.planetTrailLength),
   });
   for (let i = 0; i < sys.suns.length; i++) {
     const s = from[i];
@@ -1134,13 +1195,35 @@ export function advance(
     const sunsComeApart = sys.suns.some(
       (s) => Math.hypot(s.x, s.y) > SUN_ESCAPE_RADIUS,
     );
-    // An orbit around three suns that are no longer a system is not an orbit
-    // this civilisation can be said to have held. Without this a survival
-    // notice could land over a frame with a sun missing from it, which is the
-    // same lie the whole-era test was added to stop.
-    if (sunsComeApart) sys.orbitWrecked = true;
 
-    if (sys.eraElapsed >= CHAOS_MAX || sunsComeApart) {
+    // It ends the era and it decides nothing about the people. Condemning them
+    // as well — `if (sunsComeApart) sys.orbitWrecked = true` — made the
+    // survival branch unreachable on this path by construction: measured, 5 of
+    // 5 such eras collapsed and none survived, and two of those five were shown
+    // "the orbit never recovered" while sitting at 1.05 and 1.07 of their own
+    // radius with no exposure worth the name. That is the same lie `starless`
+    // was deleted for, relabelled. A civilisation's fate is what the sky did to
+    // it and whether it held its orbit; a sun wandering off is something it
+    // lives through.
+    //
+    // What justified condemning them was that a survival notice must not land
+    // over a frame with a sun missing from it. That still holds — it is
+    // asserted by the harness rather than bought here, and SUN_ESCAPE_RADIUS is
+    // inside the frame on the moth and outside it on the figure-eight. See the
+    // 2026-09-09 review.
+    const home = sys.planets[0];
+    // The home world has left the picture, so the era it is being judged on is
+    // no longer on screen. This does not condemn it either: the frame edge lies
+    // outside SURVIVABLE_BAND on both solutions — asserted, because that is
+    // what makes this a matter of *when* the notice lands rather than whether
+    // the civilisation dies — so `orbitWrecked` is already set by the time this
+    // can hold. What it removes is the gap: killing the world on accumulated
+    // cold instead of instantly at escapeRadiusFor let it drift off screen for
+    // up to LETHAL_EXPOSURE of sim time before its notice arrived, worst
+    // measured 3.52s, and let it reach 6.44 — past the moth's own frame.
+    const homeLeftFrame = Math.hypot(home.x, home.y) > frameRadiusFor(sys.orbit);
+
+    if (sys.eraElapsed >= CHAOS_MAX || sunsComeApart || homeLeftFrame) {
       // Surviving means the orbit was never lost — not that the world happens
       // to be crossing its own radius now. A world flung onto a wild ellipse
       // hasn't survived in any meaningful sense; it just hasn't finished

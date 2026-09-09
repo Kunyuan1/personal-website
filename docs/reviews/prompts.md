@@ -187,7 +187,7 @@ measured or validated, while these are a judgement about what a Chaotic Era
 should feel like. If you disagree with where they landed, re-run the sweep
 rather than nudging one of them.
 
-Mortality is 74%, up from 66%, because a civilisation is easier to end than a
+Mortality is 73%, up from 66%, because a civilisation is easier to end than a
 planet is to destroy. Whether that is too deadly is a question about the site,
 not about the simulation, and the harness will not answer it.
 

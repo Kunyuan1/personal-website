@@ -2,7 +2,14 @@
 
 **Scope:** `src/lib/trisolaris.ts`, `scripts/simulation-report.mts`, `src/components/EraNotice.tsx`, ticket #17
 **Commit:** branch `honest-deaths`
-**Harness:** `npm run sim:report` — 33/33 passing
+**Harness:** `npm run sim:report` — 37/37 passing
+
+**Reviewed since:** eight findings against this branch, all fixed — see
+[the findings review](./2026-09-09-honest-deaths-findings.md). Three claims in
+this file were wrong and are corrected in place below: the suns coming apart no
+longer condemns a civilisation, `syzygy` no longer renames deaths that were not
+heat deaths, and the home world is bounded by the frame. The numbers moved with
+them: mortality 74% -> 73%, survival 24% -> 25%, `syzygy` 14 -> 12.
 
 A design record rather than a review of someone else's work, kept here because
 the ticket asked for one and because the sweep that chose three constants is
@@ -50,9 +57,15 @@ rig, the same arrangement `homeExcursion` got in the 2026-09-08 review.
 Civilisations die of **exposure**, not position: time spent beyond a threshold,
 accumulated in simulation time so a slingshot is billed for the heat it
 delivered rather than the frames it took. `BURN_RADIUS` at 0.22 is a near miss,
-not a collision — the suns have no radius here, and measured, the world crosses
-from ~0.23 to dead inside one frame's 32 substeps — so a fast close pass is now
-survivable and a slow one is not.
+not a collision — the suns have no radius in the physics, and measured, the
+world crosses from ~0.23 to dead inside one frame's 32 substeps — so a fast
+close pass is now survivable and a slow one is not.
+
+The canvas is the exception to "no radius", and finding 6 was right to say so: a
+sun is drawn as a 4.4px core inside a 34px corona, and the home world passes
+within **0.0098 world units — 0.6px** of a sun's centre, 148 frames inside
+`BURN_RADIUS` over 75 minutes. It is knowingly accepted, with the reasons
+written next to `isDestroyed` rather than left for the next reader to measure.
 
 Trisolaris is carried across a collapse rather than ghosted, with its trail, and
 the settle blends it into its place in the new configuration. That trail is the
@@ -67,9 +80,20 @@ Recorded because each was caught by a red invariant rather than by reading.
 nobody had written down: it was the only thing that ever ended an era in which
 a sun wandered off. Without it the suns drifted past 6 and `max sun radius`
 went red, taking `a survivor's suns stay in frame` with it (worst x1.345). The
-era now ends when the suns come apart, and that also sets `orbitWrecked` —
-otherwise a survival notice could land over a frame with a sun missing from it,
-which is the same lie the whole-era test was added to stop.
+era now ends when the suns come apart.
+
+**It also set `orbitWrecked`, and that was finding 2 — a lie relabelled rather
+than removed.** With the flag set by the terminator itself, the survival branch
+was unreachable on that path by construction: 5 of 5 such eras collapsed, two of
+them sitting at x1.05 and x1.07 of their own radius with no exposure worth the
+name, and both were shown *"The orbit never recovered."* `starless` was deleted
+for ending civilisations that stood in perfectly good light; this ended ones
+that stood on perfectly good orbits. A sun wandering off now ends the era and
+decides nothing: of 4 such eras, **2 survive and 2 die**, and the two deaths are
+at x0.22 and x1.33 — outside the band on their own account. What justified the
+flag — that a survival notice must not land over a frame with a sun missing from
+it — is now bought by the invariant that asserts it rather than by condemning
+the survivors, and it holds at worst x0.942.
 
 **`syzygy` was unreachable, then unreachable a second way.** Appended last in
 `describeFates` it could never be picked, because `pickFate` takes the first
@@ -83,8 +107,15 @@ was called a tri-solar day could not scorch anyone.** Over 75 simulated minutes
 
 Replaced with a test of where the heat is coming from: if no single sun supplies
 more than `SYZYGY_DOMINANCE` of the flux, three of them are in the sky at once.
-That is both the better test and the more literal one. `syzygy` is now 14 of 126
+That is both the better test and the more literal one. `syzygy` is 12 of 124
 collapses, and `SYZYGY_SPREAD`, `SYZYGY_RANGE` and `sunSpread` are deleted.
+
+It shipped one lie short of correct, which was finding 3: `syzygyDose` only
+accumulates inside the heat branch, so it is a share of the *heat* dose, and the
+conjunction test was applied to whatever `lethal` held. A world cooked to half a
+dose under a conjunction and then frozen to death was announced as a tri-solar
+day — 1 of 14 notices. It now requires `scorched`, and the audit below covers
+every collapse rather than the 79 that a mislabel could not hide inside.
 
 **The ghost invariant had inverted.** It expected a collapse to retire every
 standing world; a collapse now spares Trisolaris. The expression once planted
@@ -136,7 +167,7 @@ mortality invariant's ceiling, where any later change trips them.
 
 ## Mortality moved, and that is a decision
 
-**74%, up from 66%.** Survival falls from 33% of Chaotic Eras to 24%. A
+**73%, up from 66%.** Survival falls from 33% of Chaotic Eras to 25%. A
 civilisation is simply easier to end than a planet is to destroy, and no
 threshold in the sweep both keeps the causes varied and holds mortality where
 it was. This is a question about the site rather than about the simulation, and
@@ -191,6 +222,9 @@ moth from the site, and the moth is a validated solution and half the visual
 variety.
 
 ## Numbers at the time of review
+
+As the branch stood before the findings review; the current run is in
+[the findings review](./2026-09-09-honest-deaths-findings.md).
 
 ```
 Trisolaran simulation report

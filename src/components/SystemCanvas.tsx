@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { useEra } from "@/components/EraProvider";
 import {
+  frameRadiusFor,
   HOME_COLOR,
   SUN_COLORS,
   WORLD_COLOR,
@@ -76,8 +77,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
      * edge, which is the point.
      */
     const scaleFor = (orbit: Orbit) => {
-      const outermost = orbit.worlds[orbit.worlds.length - 1].r;
-      const extent = outermost * 1.06;
+      const extent = frameRadiusFor(orbit);
       const wide = width >= 900;
       return wide
         ? Math.min((width * 0.4) / extent, (height * 0.46) / extent)

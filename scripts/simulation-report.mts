@@ -22,7 +22,9 @@ import {
   SUN_ESCAPE_RADIUS,
   SURVIVABLE_BAND,
   LETHAL_EXPOSURE,
+  SYZYGY_SHARE,
   fluxOn,
+  frameRadiusFor,
   type CollapseCause,
   type Planet,
 } from "../src/lib/trisolaris.ts";
@@ -136,6 +138,7 @@ let unfinishedChaos = 0;
 let deathsWithoutGhost = 0;
 let shortestTrailAfterCollapse = Infinity;
 let maxTrailExcess = 0;
+let maxPlanetTrailExcess = 0;
 let maxSunRadius = 0;
 let maxWorldWhileStable = 0;
 let peakSunSpeed = 0;
@@ -143,9 +146,12 @@ let slowestRate = 1;
 let worstCrossing = Infinity;
 const noticeDelays: number[] = [];
 const causeCounts: Partial<Record<CollapseCause, number>> = {};
-// Reported scorched/frozen deaths, and how many of them the exposure did not
-// actually justify.
-let scorchedOrFrozen = 0;
+// How many collapses reported a cause the state did not justify. Every
+// collapse, not only the scorched and frozen ones: auditing those two covered
+// 79 of 126, and because `describeFates` puts `syzygy` in *front* of the lethal
+// cause, mislabelling a death as a tri-solar day was enough to lift it out of
+// the audited set. An invariant a mislabel can escape by being mislabelled is
+// not holding the line.
 let deathsWithoutExposure = 0;
 // Collapses that retired Trisolaris along with its civilisation.
 let homeGhosted = 0;
@@ -159,6 +165,12 @@ let survivorWorstDose = 0;
 let survivorWorstHome = 0;
 let survivorWorstSun = 0;
 let survivorFramesOffScreen = 0;
+// The furthest the home world got from the centre during a Chaotic Era, as a
+// fraction of the frame. Nothing bounded it: the suns have SUN_ESCAPE_RADIUS
+// and survivors have SURVIVABLE_BAND, but the home world of a civilisation
+// about to die had neither, and reached 6.44 — past the moth's own frame of
+// 6.36 — with the notice arriving later still.
+let maxHomeInFrame = 0;
 
 for (const seed of [...SEEDS]) {
   const sys = createSystem();
@@ -186,7 +198,7 @@ for (const seed of [...SEEDS]) {
   let eraOffScreen = 0;
 
   for (let f = 0; f < MINUTES_PER_SEED * 60 * SIM_HZ; f++) {
-    const visible = sys.orbit.worlds[sys.orbit.worlds.length - 1].r * 1.06;
+    const visible = frameRadiusFor(sys.orbit);
     const homeRadius = Math.hypot(sys.planets[0].x, sys.planets[0].y);
     if (homeRadius > visible && offScreenSince < 0) offScreenSince = simTime;
     if (homeRadius <= visible) offScreenSince = -1;
@@ -202,10 +214,25 @@ for (const seed of [...SEEDS]) {
     // at the moment anything died in it.
     const stableBefore = sys.era === "stable" && sys.settle >= 1;
     const aliveBefore = sys.planets.filter((pl) => pl.alive).length;
-    // Read before the frame because a collapse zeroes both on the way out.
+    // Read before the frame because a collapse zeroes all of these on the way
+    // out, along with the orbit it was being judged against.
     const heatBefore = sys.heatExposure;
     const coldBefore = sys.coldExposure;
+    const syzygyBefore = sys.syzygyDose;
+    const wreckedBefore = sys.orbitWrecked;
+    const homeBaseBefore = sys.planets[0].home;
+    const chaoticBefore = sys.era === "chaotic";
     const events = advance(sys, 1, rand);
+    // After the frame as well as before it. A collapse carries the home world
+    // across at exactly the position it died at, so this is the only reading
+    // that sees the frame the notice landed over; measured at the top of the
+    // frame alone, the crossing that ends the era is never sampled at all.
+    if (chaoticBefore) {
+      maxHomeInFrame = Math.max(
+        maxHomeInFrame,
+        Math.hypot(sys.planets[0].x, sys.planets[0].y) / visible,
+      );
+    }
     simTime += SIM_FRAME_TIME;
     let newGhosts = 0;
     let newHomeGhosts = 0;
@@ -272,12 +299,29 @@ for (const seed of [...SEEDS]) {
         causeCounts[event.cause] = (causeCounts[event.cause] ?? 0) + 1;
         // At most one frame of exposure can have been added inside the call
         // that reported this, so the reading from before it must already be
-        // within one frame of the lethal dose.
-        if (event.cause === "scorched" || event.cause === "frozen") {
-          scorchedOrFrozen++;
-          const dose = event.cause === "scorched" ? heatBefore : coldBefore;
-          if (dose < LETHAL_EXPOSURE - SIM_FRAME_TIME) deathsWithoutExposure++;
-        }
+        // within one frame of whatever the cause claims.
+        //
+        // `drift` is read off the latch, or off where the world ended up: the
+        // flag can be set and the era ended inside the same frame, which is
+        // invisible from before it, but a collapse carries the home world over
+        // at the position it died at, so an out-of-band world is still there to
+        // be measured. `syzygy` has to answer for both doses — it is a name for
+        // a death by heat, so the heat must have been lethal *and* mostly taken
+        // with three suns in the sky.
+        const lethalDose = LETHAL_EXPOSURE - SIM_FRAME_TIME;
+        const endedAt = Math.hypot(sys.planets[0].x, sys.planets[0].y) / homeBaseBefore;
+        const endedOutOfBand =
+          endedAt < SURVIVABLE_BAND[0] || endedAt > SURVIVABLE_BAND[1];
+        const justified =
+          event.cause === "scorched"
+            ? heatBefore >= lethalDose
+            : event.cause === "frozen"
+              ? coldBefore >= lethalDose
+              : event.cause === "syzygy"
+                ? heatBefore >= lethalDose &&
+                  syzygyBefore >= LETHAL_EXPOSURE * SYZYGY_SHARE - SIM_FRAME_TIME
+                : wreckedBefore || endedOutOfBand;
+        if (!justified) deathsWithoutExposure++;
         if (event.cause === previousNotice) repeats++;
         if (stableBefore) deathsDuringStable++;
         // A collapse must always begin a settle; settle >= 1 means it didn't.
@@ -306,6 +350,18 @@ for (const seed of [...SEEDS]) {
     // is for.
     for (const t of sys.sunTrails) {
       maxTrailExcess = Math.max(maxTrailExcess, t.length - sys.sunTrailLength);
+    }
+    // The worlds' trails, for the same reason and with a worse blind spot: the
+    // home world's trail is now carried across a collapse, and `recordTrails`
+    // can only ever remove one point per frame, so an over-long trail arriving
+    // from the previous orbit is never drained. Measured before the truncation
+    // was added: 691 points against a limit of 364, for 31% of the run.
+    for (const p of sys.planets) {
+      if (!p.alive) continue;
+      maxPlanetTrailExcess = Math.max(
+        maxPlanetTrailExcess,
+        p.trail.length - sys.planetTrailLength,
+      );
     }
 
     slowestRate = Math.min(slowestRate, sys.timeScale);
@@ -338,6 +394,10 @@ for (const seed of [...SEEDS]) {
 }
 
 const meanDelay = noticeDelays.reduce((a, b) => a + b, 0) / noticeDelays.length;
+const sortedDelays = [...noticeDelays].sort((a, b) => a - b);
+const p90Delay =
+  sortedDelays[Math.min(sortedDelays.length - 1, Math.floor(sortedDelays.length * 0.9))] ?? 0;
+const maxDelay = sortedDelays[sortedDelays.length - 1] ?? 0;
 const mortality = Math.round((collapses / chaoticEras) * 100);
 const repeatRate = Math.round((repeats / collapses) * 100);
 
@@ -359,14 +419,18 @@ record("max sun radius", round(maxSunRadius), `<= ${SUN_ESCAPE_RADIUS}`, maxSunR
 record("any world while stable", `x${round(maxWorldWhileStable)}`, "< x1.10", maxWorldWhileStable < 1.1);
 record("worst on-screen crossing", `${round(worstCrossing, 2)}s`, "> 1.0s", worstCrossing > 1);
 record("all four causes occur", Object.keys(causeCounts).length, "4", Object.keys(causeCounts).length === 4);
-// A civilisation may only be reported as scorched or frozen if it actually
-// stood in that for LETHAL_EXPOSURE of simulation time. Without this the dwell
-// could be reduced to an instant — which is what the old model did, and what
-// made a fast slingshot past a sun indistinguishable from falling into one —
-// and every other number here would look unchanged.
+// A civilisation may only be reported as dying of something that happened to
+// it: scorched or frozen after LETHAL_EXPOSURE of simulation time in it, a
+// tri-solar day only over a lethal heat dose mostly taken under a conjunction,
+// drift only over a lost orbit. Without the dose half, the dwell could be
+// reduced to an instant — which is what the old model did, and what made a fast
+// slingshot past a sun indistinguishable from falling into one — and every
+// other number here would look unchanged. Without the other three, a death can
+// be renamed into a cause nothing audits, which is how a tri-solar day came to
+// be announced over a civilisation that froze.
 record(
   "no death without the exposure to justify it",
-  `${deathsWithoutExposure} of ${scorchedOrFrozen}`,
+  `${deathsWithoutExposure} of ${collapses}`,
   "0",
   deathsWithoutExposure === 0,
 );
@@ -380,7 +444,19 @@ record(
   homeGhosted === 0,
 );
 record("consecutive notices repeating", `${repeats}/${collapses} (${repeatRate}%)`, "< 20%", repeatRate < 20);
-record("notice delay after leaving view", `mean ${toSeconds(meanDelay)}s`, "< 2.0s", toSeconds(meanDelay) < 2);
+// The worst, not the mean. Killing the home world on accumulated cold rather
+// than instantly at escapeRadiusFor let it drift off screen for up to
+// LETHAL_EXPOSURE of sim time before its notice landed: against `main` the mean
+// improved 3x (0.30s -> 0.10s) while the max regressed 40% (2.50s -> 3.52s),
+// past this row's own threshold, and the row reported a win. A mean cannot see
+// the failure this row exists for — the ESCAPE_FACTOR doc names it and quotes a
+// max — so the max is what is asserted and the mean is printed beside it.
+record(
+  "notice delay after leaving view",
+  `max ${toSeconds(maxDelay)}s (mean ${toSeconds(meanDelay)}s, p90 ${toSeconds(p90Delay)}s)`,
+  "max < 2.0s",
+  toSeconds(maxDelay) < 2,
+);
 record("mortality", `${mortality}%`, "40-80%", mortality >= 40 && mortality <= 80);
 // What "survived" has to mean on screen. Before survival was judged over the
 // whole era rather than at its last frame, the worst survivor peaked at 1.717x
@@ -408,6 +484,22 @@ record(
   "< x1.0",
   survivorWorstSun < 1,
 );
+// The home world stays in the picture it is being judged in. Nothing in the
+// simulation bounded it before: the suns have SUN_ESCAPE_RADIUS, survivors have
+// SURVIVABLE_BAND, and the home world of a civilisation about to die had
+// neither — it reached 6.44 against the moth's frame of 6.36, and the notice
+// describing it landed seconds later. A Chaotic Era now ends when the world
+// leaves the frame, which is a claim about *when* the notice lands and not
+// about who dies: the frame edge is outside the band on both solutions (
+// asserted per orbit below), so the orbit is already lost by the time this can
+// hold. The slack is one frame of the world's own motion, since the crossing
+// happens inside a frame and the era ends at the end of it.
+record(
+  "the home world stays in the frame",
+  `worst x${round(maxHomeInFrame)}`,
+  "< x1.02",
+  maxHomeInFrame < 1.02,
+);
 // A Chaotic Era has exactly two endings and both are announced. Surviving used
 // to be reported by nothing at all, which on screen was indistinguishable from
 // a death whose notice had failed — so assert every era reaches one of them.
@@ -422,6 +514,14 @@ record(
   `worst excess ${maxTrailExcess}`,
   "0",
   maxTrailExcess <= 0,
+);
+// The counterpart for the worlds, which did not exist — which is the only
+// reason a home trail 90% over its limit for a third of the run went green.
+record(
+  "world trail within its orbit's limit",
+  `worst excess ${maxPlanetTrailExcess}`,
+  "0",
+  maxPlanetTrailExcess <= 0,
 );
 
 /* --------------------------------------------------------------------------
@@ -578,6 +678,21 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
     `room ${round(roomBelow)} below, ${round(roomAbove)} above`,
     "both > 0",
     roomBelow > 0 && roomAbove > 0,
+  );
+
+  // A Chaotic Era ends when the home world leaves the frame, and that must not
+  // be a way of killing a civilisation that was otherwise fine. It isn't, as
+  // long as the frame edge lies beyond the top of the band: a world that far
+  // out lost its orbit on the way, so `orbitWrecked` is already set. If a new
+  // solution were ever placed with its frame *inside* the band, that terminator
+  // would quietly become a cause of death nothing announced.
+  const bandTop = orbit.worlds[0].r * SURVIVABLE_BAND[1];
+  const frameRoom = frameRadiusFor(orbit) - bandTop;
+  record(
+    `${orbit.id}: the frame edge is outside the band`,
+    `frame ${round(frameRadiusFor(orbit))} vs band top ${round(bandTop)}`,
+    "> 0",
+    frameRoom > 0,
   );
 }
 
