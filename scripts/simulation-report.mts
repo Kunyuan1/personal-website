@@ -21,6 +21,8 @@ import {
   SIM_HZ,
   SUN_ESCAPE_RADIUS,
   SURVIVABLE_BAND,
+  LETHAL_EXPOSURE,
+  fluxOn,
   type CollapseCause,
   type Planet,
 } from "../src/lib/trisolaris.ts";
@@ -141,6 +143,15 @@ let slowestRate = 1;
 let worstCrossing = Infinity;
 const noticeDelays: number[] = [];
 const causeCounts: Partial<Record<CollapseCause, number>> = {};
+// Reported scorched/frozen deaths, and how many of them the exposure did not
+// actually justify.
+let scorchedOrFrozen = 0;
+let deathsWithoutExposure = 0;
+// Collapses that retired Trisolaris along with its civilisation.
+let homeGhosted = 0;
+// The worst either exposure reached in a Chaotic Era that was survived, as a
+// fraction of the lethal dose — how close the survivors came.
+let survivorWorstDose = 0;
 // The worst any survivor did, over every Chaotic Era that was survived. A
 // survival is a claim about the animation as much as about the state: the
 // notice says the world came through, so the world has to have been visibly
@@ -191,13 +202,18 @@ for (const seed of [...SEEDS]) {
     // at the moment anything died in it.
     const stableBefore = sys.era === "stable" && sys.settle >= 1;
     const aliveBefore = sys.planets.filter((pl) => pl.alive).length;
+    // Read before the frame because a collapse zeroes both on the way out.
+    const heatBefore = sys.heatExposure;
+    const coldBefore = sys.coldExposure;
     const events = advance(sys, 1, rand);
     simTime += SIM_FRAME_TIME;
     let newGhosts = 0;
+    let newHomeGhosts = 0;
     for (const ghost of sys.ghosts) {
       if (seenGhosts.has(ghost)) continue;
       seenGhosts.add(ghost);
       newGhosts++;
+      if (ghost.isHome) newHomeGhosts++;
     }
     // How many worlds should have been retired this frame. A collapse retires
     // every world still standing, not only the one that died, so it is the
@@ -205,17 +221,22 @@ for (const seed of [...SEEDS]) {
     // to dead.
     //
     // Counted this way rather than against the number of death *events*,
-    // which had four worlds of slack on exactly the frame that matters:
-    // a collapse creates a ghost per surviving outer world, so the one event
-    // was covered several times over and a home world that was never ghosted
-    // went unseen. Planted — `resetInto` carrying `pl.alive && !pl.isHome`,
-    // so Trisolaris and its trail blink out on every collapse — the old test
-    // read 156/156 and the run exited 0.
+    // which had four worlds of slack on exactly the frame that matters: a
+    // collapse creates a ghost per outer world, so the one event was covered
+    // several times over and a missing ghost went unseen.
+    //
+    // A collapse now retires every standing world *except* Trisolaris, which
+    // outlives its civilisations — hence the -1. That exact expression,
+    // `pl.alive && !pl.isHome`, was once planted here as a regression to prove
+    // this invariant had teeth; it is now the shipped behaviour, and the thing
+    // being guarded has inverted. "Trisolaris outlives its civilisations"
+    // below watches that side of it.
     const collapsed = events.some((e) => e.type === "collapse");
     const expectedGhosts = collapsed
-      ? aliveBefore
+      ? aliveBefore - 1
       : aliveBefore - sys.planets.filter((pl) => pl.alive).length;
     if (newGhosts < expectedGhosts) deathsWithoutGhost += expectedGhosts - newGhosts;
+    if (collapsed && newHomeGhosts > 0) homeGhosted++;
 
     for (const event of events) {
       if (event.type === "era") {
@@ -229,6 +250,12 @@ for (const seed of [...SEEDS]) {
         survivals++;
         previousNotice = "survived";
         survivorWorstHome = Math.max(survivorWorstHome, eraPeakHome);
+        // Exposure is not cleared until the next Chaotic Era begins, so this
+        // is the whole of what the survivors took.
+        survivorWorstDose = Math.max(
+          survivorWorstDose,
+          Math.max(sys.heatExposure, sys.coldExposure) / LETHAL_EXPOSURE,
+        );
         survivorWorstSun = Math.max(survivorWorstSun, eraPeakSun);
         survivorFramesOffScreen += eraOffScreen;
       } else if (event.type === "worldLost") {
@@ -243,6 +270,14 @@ for (const seed of [...SEEDS]) {
         collapses++;
         deaths++;
         causeCounts[event.cause] = (causeCounts[event.cause] ?? 0) + 1;
+        // At most one frame of exposure can have been added inside the call
+        // that reported this, so the reading from before it must already be
+        // within one frame of the lethal dose.
+        if (event.cause === "scorched" || event.cause === "frozen") {
+          scorchedOrFrozen++;
+          const dose = event.cause === "scorched" ? heatBefore : coldBefore;
+          if (dose < LETHAL_EXPOSURE - SIM_FRAME_TIME) deathsWithoutExposure++;
+        }
         if (event.cause === previousNotice) repeats++;
         if (stableBefore) deathsDuringStable++;
         // A collapse must always begin a settle; settle >= 1 means it didn't.
@@ -323,7 +358,27 @@ record(
 record("max sun radius", round(maxSunRadius), `<= ${SUN_ESCAPE_RADIUS}`, maxSunRadius <= SUN_ESCAPE_RADIUS + 0.01);
 record("any world while stable", `x${round(maxWorldWhileStable)}`, "< x1.10", maxWorldWhileStable < 1.1);
 record("worst on-screen crossing", `${round(worstCrossing, 2)}s`, "> 1.0s", worstCrossing > 1);
-record("all five causes occur", Object.keys(causeCounts).length, "5", Object.keys(causeCounts).length === 5);
+record("all four causes occur", Object.keys(causeCounts).length, "4", Object.keys(causeCounts).length === 4);
+// A civilisation may only be reported as scorched or frozen if it actually
+// stood in that for LETHAL_EXPOSURE of simulation time. Without this the dwell
+// could be reduced to an instant — which is what the old model did, and what
+// made a fast slingshot past a sun indistinguishable from falling into one —
+// and every other number here would look unchanged.
+record(
+  "no death without the exposure to justify it",
+  `${deathsWithoutExposure} of ${scorchedOrFrozen}`,
+  "0",
+  deathsWithoutExposure === 0,
+);
+// Trisolaris is not one of the eleven. If a collapse ever retires the home
+// world, every notice on the site is describing a planet's death while
+// claiming a civilisation's.
+record(
+  "Trisolaris outlives its civilisations",
+  `${homeGhosted} collapses ghosted the home world`,
+  "0",
+  homeGhosted === 0,
+);
 record("consecutive notices repeating", `${repeats}/${collapses} (${repeatRate}%)`, "< 20%", repeatRate < 20);
 record("notice delay after leaving view", `mean ${toSeconds(meanDelay)}s`, "< 2.0s", toSeconds(meanDelay) < 2);
 record("mortality", `${mortality}%`, "40-80%", mortality >= 40 && mortality <= 80);
@@ -436,6 +491,8 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
 
   const peaks = orbit.worlds.map(() => 0);
   let homeLow = Infinity;
+  let fluxLow = Infinity;
+  let fluxHigh = 0;
   let eras = 0;
   let settled = true;
   // A Stable Era is `stableDuration` of simulation time plus the settle in
@@ -457,7 +514,12 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
         if (p.alive) peaks[i] = Math.max(peaks[i], Math.hypot(p.x, p.y) / p.home);
       });
       const home = sys.planets[0];
-      if (home.alive) homeLow = Math.min(homeLow, Math.hypot(home.x, home.y) / home.home);
+      if (home.alive) {
+        homeLow = Math.min(homeLow, Math.hypot(home.x, home.y) / home.home);
+        const f = fluxOn(home, sys.suns);
+        fluxLow = Math.min(fluxLow, f);
+        fluxHigh = Math.max(fluxHigh, f);
+      }
     }
   }
 
@@ -486,6 +548,24 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
     `[x${round(homeLow)}, x${round(peaks[0])}] vs [x${tableLow}, x${tableHigh}]`,
     `within ${EXCURSION_TOLERANCE}`,
     stale <= EXCURSION_TOLERANCE,
+  );
+
+  // SCORCH_MULTIPLE and FREEZE_FRACTION are read against this band, so a stale
+  // entry moves how much sky a civilisation may take before it dies — silently,
+  // and differently for each solution. The two bands are nowhere near each
+  // other (the figure-eight's home world stands in two to five times the light
+  // the moth's does), which is exactly why one absolute threshold could not
+  // work and why these have to be per orbit and measured.
+  const [fluxTableLow, fluxTableHigh] = orbit.homeFlux;
+  const fluxStale = Math.max(
+    Math.abs(fluxLow - fluxTableLow),
+    Math.abs(fluxHigh - fluxTableHigh),
+  );
+  record(
+    `${orbit.id}: home flux matches the table`,
+    `[${round(fluxLow, 4)}, ${round(fluxHigh, 4)}] vs [${fluxTableLow}, ${fluxTableHigh}]`,
+    `within ${EXCURSION_TOLERANCE}`,
+    fluxStale <= EXCURSION_TOLERANCE,
   );
 
   // The band has to leave room on both sides of an orbit nothing has happened
@@ -552,6 +632,9 @@ if (process.argv.includes("--json")) {
     `\n  chaotic eras ${chaoticEras}, collapses ${collapses}, survivals ${survivals}, outer worlds lost ${outerWorldsLost}`,
   );
   console.log(`  causes ${JSON.stringify(causeCounts)}`);
+  console.log(
+    `  worst dose a civilisation survived ${round(survivorWorstDose)} of the lethal exposure`,
+  );
   console.log(`  peak sun speed ${round(peakSunSpeed)}, slowest rate ${round(slowestRate)}x`);
 
   // Printed per world, not just as the worst: this is the provenance of every

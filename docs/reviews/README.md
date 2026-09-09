@@ -73,4 +73,5 @@ what stops the next.
 | 2026-09-05 | [Simulation](./2026-09-05-simulation.md) | All 6 findings fixed; harness now 17/17, with the original 14 unchanged; plus a `syzygy` reproduction (seed 2 @ 84.3s) |
 | 2026-09-06 | [More worlds](./2026-09-06-more-worlds.md) | All 5 findings fixed; harness now 21/21, and every world in `ORBITS` is measured rather than just Trisolaris |
 | 2026-09-07 | [Survival notice](./2026-09-07-survival-notice.md) | All 5 findings fixed; harness now 22/22, and `tsc` covers `scripts/` for the first time |
+| 2026-09-09 | [Honest deaths](./2026-09-09-honest-deaths.md) | Insolation replaces distance; `starless` deleted as measuring nothing; Trisolaris outlives its civilisations. Harness now 33/33, thresholds chosen by a two-stage sweep, mortality 66% -> 74% |
 | 2026-09-08 | [Survival band](./2026-09-08-survival-band.md) | 2 of 4 fixed, and **2 of the findings were themselves wrong** — the figure-eight/moth mortality split survives the band being removed (70% vs 12%), so it is geometry, not the band; and `drift` at 54% is the latch working, not a broken design note. Harness now 29/29, with the ghost invariant and two new ones planted against |

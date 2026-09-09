@@ -44,7 +44,7 @@ Three files, with a strict separation:
 
 ```
 npm install
-npm run sim:report      # the important one: ~10s, 29 invariants
+npm run sim:report      # the important one: ~10s, 33 invariants
 npx next typegen        # required before tsc on a fresh clone
 npx tsc --noEmit
 npx eslint .
@@ -106,11 +106,18 @@ a blocking finding.
 
 ## Check these hardest — each was already got wrong once
 
-- **`fatesOf` and `describeFates`.** `drift` is a *description*, never a cause
-  of death. Making it lethal killed worlds the moment they wandered: 104 deaths
-  out of 119, and worse repetition than before the change. Confirm nothing has
-  made it lethal again, and that `describeFates` only ever adds descriptions
-  that hold.
+- **`civilisationFates`, `isDestroyed` and `describeFates`.** These carry the
+  distinction the whole model rests on: a civilisation ends, a planet does not.
+  `isDestroyed` is for the outer worlds — the eleven the suns swallowed — and
+  must never be applied to `planets[0]`. `civilisationFates` reads accumulated
+  exposure, never an instantaneous position. Confirm `resetInto` still carries
+  Trisolaris across rather than ghosting it, which is what "Trisolaris outlives
+  its civilisations" asserts.
+
+  `drift` remains a *description*, never a cause of death: making it lethal
+  once killed worlds the moment they wandered, 104 deaths out of 119. `syzygy`
+  is a description too, of where the heat came from, and both are only ever
+  added by `describeFates` when they actually hold.
 - **`resetInto`.** An early return here once skipped the settle exactly when a
   sun had escaped — so the collapses most in need of a graceful recovery were
   the ones that cut. Confirm every path through it settles.
@@ -172,10 +179,17 @@ has drifted from what those comments claim.
 
 ## Known gap, worth attention
 
-`syzygy` fires about 1 collapse in 90 and its transition has never been
-observed running. It shares a code path with `fire`, but that is inference, not
-evidence. If you can construct a seed or initial condition that triggers it
-reliably, that is a genuinely useful contribution.
+The exposure thresholds — `SCORCH_MULTIPLE`, `FREEZE_FRACTION`,
+`LETHAL_EXPOSURE` — were chosen from a two-stage sweep recorded in the
+2026-09-09 review, on mortality, cause balance and notice repetition. They are
+the least physically constrained numbers in the file: everything else here is
+measured or validated, while these are a judgement about what a Chaotic Era
+should feel like. If you disagree with where they landed, re-run the sweep
+rather than nudging one of them.
+
+Mortality is 74%, up from 66%, because a civilisation is easier to end than a
+planet is to destroy. Whether that is too deadly is a question about the site,
+not about the simulation, and the harness will not answer it.
 
 ## When you are done
 
