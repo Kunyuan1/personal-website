@@ -9,10 +9,10 @@
 # whole life of the harness, so a compile error in it shipped, and two ghost
 # invariants could not fail at all.
 #
-# sim:report is the one that matters and the one that costs anything: 75
-# simulated minutes across five fixed seeds plus the pinned rigs, about two
-# minutes of wall clock. It is deterministic — fixed seeds, no wall-clock input
-# — so a failure here is a real regression and not a flake.
+# sim:report is the one that matters: 75 simulated minutes across five fixed
+# seeds plus the pinned rigs. Measured at 6s on the runner and 10s locally, not
+# the "1-2 min" the docs used to claim. It is deterministic — fixed seeds, no
+# wall-clock input — so a failure here is a real regression and not a flake.
 name: checks
 
 # Pull requests, plus main after a merge. Not every push to every branch: with
@@ -34,12 +34,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # `node --experimental-strip-types` runs the .mts harness unbuilt, which
       # needs Node 22 or newer. Pinned to the major rather than to `latest` so
       # the harness is not silently run on a runtime nobody has measured it on.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
@@ -78,9 +78,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx next build
 
-      # Last because it is the slowest, and non-negotiable: it exits non-zero if
-      # any invariant fails. The full table is printed either way, so a run can
-      # be diffed against the numbers recorded in docs/reviews.
+      # Last because it is the slowest of the five, and non-negotiable: it exits
+      # non-zero if any invariant fails. The full table is printed either way,
+      # so a run can be diffed against the numbers recorded in docs/reviews.
       - name: simulation invariants
         if: ${{ !cancelled() }}
         run: npm run sim:report
