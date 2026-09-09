@@ -6,16 +6,6 @@ import { useEra } from "@/components/EraProvider";
 import type { CollapseCause } from "@/lib/trisolaris";
 
 /**
- * How a Chaotic Era ended — both ways.
- *
- * A Chaotic Era resolves into exactly one of two outcomes, and measured across
- * the report seeds the home world survives 24% of them. Only the deaths used to
- * be announced, so a survival was signalled by nothing at all: the same fade
- * from red to black, the same worlds fading back in, and no text. From the
- * outside that is indistinguishable from a disaster whose notice failed, which
- * is exactly how it was read.
- */
-/**
  * What ended a civilisation — never what ended the world.
  *
  * Every line here used to be able to contradict the animation behind it. Two
@@ -47,6 +37,16 @@ const FATES: Record<CollapseCause, { cjk: string; text: string }> = {
   },
 };
 
+/**
+ * How a Chaotic Era ended — both ways.
+ *
+ * A Chaotic Era resolves into exactly one of two outcomes, and measured across
+ * the report seeds the home world survives 25% of them. Only the deaths used to
+ * be announced, so a survival was signalled by nothing at all: the same fade
+ * from red to black, the same worlds fading back in, and no text. From the
+ * outside that is indistinguishable from a disaster whose notice failed, which
+ * is exactly how it was read.
+ */
 export default function EraNotice() {
   // `notice` is the text and `noticeVisible` is whether it is up. They are
   // separate so the panel can fade out with its words still in it: unmounting
