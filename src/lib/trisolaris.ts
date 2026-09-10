@@ -623,6 +623,54 @@ function blendToward(body: Body, target: Body, w: number) {
   body.vy += (target.vy - body.vy) * w;
 }
 
+/**
+ * How much of the remaining gap to the shadow to close this frame.
+ *
+ * The settle used to close a fixed fraction per frame — a first-order lag with
+ * a time constant of SETTLE_TIME/4. Chasing a *moving* target, that never
+ * arrives: it settles at a steady-state lag of roughly v x tau behind, and the
+ * home world orbits at v = sqrt(3/r) ~ 1.0 against tau = 1.25, so it ended
+ * every settle about 1.25 units short. The code then assigned the shadow
+ * outright, which is what that distance became: a teleport, on all 166 settles
+ * of a 75-minute run, up to 1.286 units for a world and 1.015 for a sun.
+ *
+ * Lengthening SETTLE_TIME cannot fix that. The lag is proportional to the time
+ * constant, so a longer settle is a *larger* jump, held for longer.
+ *
+ * So the gap is given an envelope that reaches zero when the settle does:
+ *
+ *   gap(s) = exp(-4s) * (1 - smoothstep(s))
+ *
+ * The first factor is exactly the old behaviour — exp(-4s) in settle-fraction
+ * units is the same curve as a time constant of SETTLE_TIME/4 — and the second
+ * is 1 at the start and 0 at the end, with zero slope at both. So the early
+ * settle moves exactly as it always did, and the arrival is forced rather than
+ * approached. The adoption at the end is then a no-op instead of a cut, and it
+ * is kept precisely because it should be one: the era still begins from the
+ * validated initial conditions, now by convergence rather than by assignment.
+ *
+ * The weight is the *ratio* of consecutive envelope values rather than the
+ * envelope itself, because it multiplies a gap that has already been closed by
+ * every previous frame.
+ *
+ * Two things this must not do, both measured in the 2026-09-09 review:
+ *
+ *   - Freeze. The real bodies do not integrate during a settle; every bit of
+ *     their motion is this weight times the gap. A weight easing in from zero
+ *     stalls them visibly at the moment the era ends. The exponential factor
+ *     is what keeps the opening frames moving at the rate they always did.
+ *   - Straighten. The point of chasing an orbiting shadow is that bodies curve
+ *     home rather than sliding there. Measured as path length over chord, the
+ *     settle runs 1.37 for the home world and 1.91 for a sun; the envelope
+ *     leaves both alone because it only scales how fast the gap closes.
+ */
+function blendWeight(before: number, after: number): number {
+  const envelope = (s: number) => Math.exp(-4 * s) * (1 - s * s * (3 - 2 * s));
+  const gapBefore = envelope(before);
+  if (gapBefore <= 0) return 1;
+  return 1 - envelope(after) / gapBefore;
+}
+
 /** One velocity-Verlet step over a bare set of bodies — used by the shadow. */
 function integrateBodies(suns: Body[], planets: Body[], dt: number) {
   const half = 0.5 * dt;
@@ -1020,6 +1068,7 @@ export function advance(
 
     if (settling && sys.shadow) {
       const shadow = sys.shadow;
+      const settleBefore = sys.settle;
       sys.settle = Math.min(1, sys.settle + SIM_FRAME_TIME / SETTLE_TIME);
 
       // Only the shadow integrates. Because it is running the periodic
@@ -1034,7 +1083,7 @@ export function advance(
         integrateBodies(shadow.suns, shadow.planets, DT);
       }
 
-      const w = 1 - Math.exp(-SIM_FRAME_TIME / (SETTLE_TIME / 4));
+      const w = blendWeight(settleBefore, sys.settle);
       for (let i = 0; i < sys.suns.length; i++) blendToward(sys.suns[i], shadow.suns[i], w);
       sys.planets.forEach((planet, i) => {
         if (planet.alive) blendToward(planet, shadow.planets[i], w);
@@ -1241,17 +1290,30 @@ export function advance(
         continue;
       }
 
-      // The civilisation survived. Ease back onto the periodic solution and
-      // return the surviving worlds to their *canonical* starting angles, not
-      // wherever chaos left them. Stability depends on a world's phase
-      // relative to the suns, so an arbitrary angle is an unvalidated initial
-      // condition — measured, those wander far enough to be destroyed during
-      // the following Stable Era, which is not survival in any useful sense.
-      const canonical = planetsFor(sys.orbit);
-      sys.planets.forEach((p, i) => {
-        if (!p.alive) return;
-        Object.assign(p, canonical[i], { alive: true, trail: [] });
-      });
+      // The civilisation survived. Ease back onto the periodic solution from
+      // wherever chaos left the worlds, exactly as a collapse already does.
+      //
+      // This used to place them on their canonical starting angles first,
+      // because stability depends on a world's phase relative to the suns and
+      // an arbitrary angle is an unvalidated initial condition — measured,
+      // those wander far enough to be destroyed during the following Stable
+      // Era, which is not survival in any useful sense. That reasoning is
+      // still right; the assignment was the wrong way to act on it.
+      //
+      // `beginSettle` builds its shadow from `planetsFor(sys.orbit)` on the
+      // very next line, and now that the blend arrives rather than merely
+      // approaching — see `blendWeight` — the worlds *converge* onto that same
+      // validated state instead of being placed on it. The destination is
+      // identical, which is why nothing downstream moved; what changed is that
+      // they travel there. Placed instead, a world crossed up to 11.531 world
+      // units between two frames, further than the width of the frame it is
+      // drawn in, on all 42 survivals of a 75-minute run.
+      //
+      // Their trails come with them, as Trisolaris' does across a collapse.
+      // Clearing them was the other half of the same cut: 168 trails, every
+      // surviving world, wiped in the frame the notice landed in. The trail
+      // could only be kept once the path became continuous — carried across
+      // the teleport it drew a chord straight over the frame.
       beginSettle(sys);
       events.push({ type: "survived", civilization: sys.civilization });
       events.push({ type: "era", era: "stable" });

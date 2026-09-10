@@ -171,6 +171,49 @@ let survivorFramesOffScreen = 0;
 // about to die had neither, and reached 6.44 — past the moth's own frame of
 // 6.36 — with the notice arriving later still.
 let maxHomeInFrame = 0;
+/**
+ * The furthest any body moves between two frames, and what the frame was
+ * doing when it did.
+ *
+ * The simulation is watched, so a discontinuity is a defect whatever the state
+ * afterwards says. Nothing measured this, and two teleports had been shipping
+ * since the shadow settle was written: the settle ends by adopting the shadow
+ * outright, and the survival path places its worlds on their canonical angles.
+ * Both are invisible to every other invariant here, because both land the
+ * bodies on *correct* states — they are only wrong on the way there.
+ *
+ * Only bodies whose identity survives the frame are compared. The three suns
+ * always qualify. `planets[0]` does too: Trisolaris is carried across a
+ * collapse by `resetInto` rather than replaced. The outer worlds are replaced
+ * on a collapse, so their apparent jump is a new world appearing — that is the
+ * fade `worldAlpha` exists for, not a cut — and they are skipped on exactly
+ * those frames.
+ *
+ * The bound is set from both sides, because a limit close to either one is
+ * brittle. Ordinary play runs a median of 0.021 and a worst frame of 0.066.
+ * The settle is livelier — worst 0.162, an outer world crossing the distance
+ * it used to be teleported over — and the teleports it replaced were 1.015,
+ * 1.141, 1.286, 3.931 and 11.531. So 0.3 sits 1.85x above the worst thing the
+ * simulation legitimately does and 3.4x below the smallest cut ever measured.
+ *
+ * The blend is what the worst legitimate frame belongs to, not a close pass:
+ * planets are deliberately left out of `timeScaleFor`, so the step does not
+ * shrink for a world rounding a sun, and even that peaks at 0.127.
+ */
+const STEP_LIMIT = 0.3;
+let worstStep = 0;
+let worstStepWhat = "nothing moved";
+/**
+ * Trails wiped out from under a world that is still alive.
+ *
+ * The other half of the same cut: the survival path cleared every surviving
+ * world's trail in the frame the notice landed in — 168 of them over a
+ * 75-minute run — so the one continuous thing on screen vanished at the moment
+ * the visitor was being told the civilisation had come through. A trail only
+ * ends legitimately when its world does, or when a collapse replaces an outer
+ * world with a new one.
+ */
+let trailsWiped = 0;
 
 for (const seed of [...SEEDS]) {
   const sys = createSystem();
@@ -222,6 +265,17 @@ for (const seed of [...SEEDS]) {
     const wreckedBefore = sys.orbitWrecked;
     const homeBaseBefore = sys.planets[0].home;
     const chaoticBefore = sys.era === "chaotic";
+    // Positions before the frame, for the discontinuity check below. Taken
+    // here rather than reusing `prevSunPositions`, which is a frame behind by
+    // the time the crossing measure has finished with it.
+    const settleBefore = sys.settle;
+    const beforeSuns = sys.suns.map((s) => ({ x: s.x, y: s.y }));
+    const beforePlanets = sys.planets.map((p) => ({
+      x: p.x,
+      y: p.y,
+      alive: p.alive,
+      trail: p.trail.length,
+    }));
     const events = advance(sys, 1, rand);
     // After the frame as well as before it. A collapse carries the home world
     // across at exactly the position it died at, so this is the only reading
@@ -234,6 +288,43 @@ for (const seed of [...SEEDS]) {
       );
     }
     simTime += SIM_FRAME_TIME;
+
+    // What moved, and how far. Attributed to this frame's own events: a
+    // collapse and the settle that follows it are different frames doing
+    // different things, and a cut is only diagnosable if the row says which.
+    {
+      const collapseHere = events.find((e) => e.type === "collapse");
+      const survivedHere = events.some((e) => e.type === "survived");
+      const what = survivedHere
+        ? "survival re-seed"
+        : collapseHere
+          ? `collapse (${collapseHere.cause})`
+          : settleBefore < 1 && sys.settle >= 1
+            ? "settle ends, shadow adopted"
+            : settleBefore < 1
+              ? "settling"
+              : "ordinary play";
+      const step = (moved: number, who: string) => {
+        if (moved <= worstStep) return;
+        worstStep = moved;
+        worstStepWhat = `${who}, ${what}`;
+      };
+      sys.suns.forEach((s, i) => {
+        step(Math.hypot(s.x - beforeSuns[i].x, s.y - beforeSuns[i].y), "sun");
+      });
+      sys.planets.forEach((p, i) => {
+        // The home world is carried across a collapse; the outer worlds are
+        // rebuilt, so on that one frame index `i` is a different world.
+        if (i > 0 && collapseHere) return;
+        const was = beforePlanets[i];
+        if (!was || !was.alive || !p.alive) return;
+        step(Math.hypot(p.x - was.x, p.y - was.y), p.isHome ? "home" : `world ${i}`);
+        // A trail that had something to draw and now has nothing, under a
+        // world that is still alive.
+        if (was.trail > 30 && p.trail.length <= 1) trailsWiped++;
+      });
+    }
+
     let newGhosts = 0;
     let newHomeGhosts = 0;
     for (const ghost of sys.ghosts) {
@@ -458,6 +549,16 @@ record(
   toSeconds(maxDelay) < 2,
 );
 record("mortality", `${mortality}%`, "40-80%", mortality >= 40 && mortality <= 80);
+// The simulation is watched, so a body that jumps is a defect however correct
+// the state it jumps to. Every other invariant here reads the state; this one
+// reads the motion, which is why two teleports could ship under a green run.
+record(
+  "the animation never cuts",
+  `worst ${round(worstStep)} (${worstStepWhat})`,
+  `< ${STEP_LIMIT} units`,
+  worstStep < STEP_LIMIT,
+);
+record("no trail is wiped from a living world", trailsWiped, "0", trailsWiped === 0);
 // What "survived" has to mean on screen. Before survival was judged over the
 // whole era rather than at its last frame, the worst survivor peaked at 1.717x
 // its own radius — 1.24x the frame — and survivors spent 20 eras' worth of
@@ -719,6 +820,9 @@ if (process.argv.includes("--json")) {
         peakSunSpeed: round(peakSunSpeed),
         slowestRate: round(slowestRate),
         worstCrossing: round(worstCrossing, 2),
+        worstStep: round(worstStep),
+        worstStepWhat,
+        trailsWiped,
         worldPeaks: worldPeaks.map((w) => ({ ...w, peak: round(w.peak) })),
         checks,
       },
