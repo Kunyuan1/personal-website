@@ -15,10 +15,11 @@ import { useEra } from "@/components/EraProvider";
  *
  * It is deliberately hard to reach. The simulation reports an unbound
  * Trisolaris about once every seventeen minutes of watching, and `EraProvider`
- * ignores it until fifty civilisations have already come and gone — roughly
- * half an hour of cumulative visiting. Below that gate the same event is a
- * catastrophe survived: the world is flung out, hauled back, and the era
- * resolves however it was going to.
+ * ignores it until twenty-five civilisations have already come and gone —
+ * about a quarter of an hour of cumulative visiting, counted only while
+ * someone is actually looking. Below that gate the same event is a catastrophe
+ * survived: the world is flung out, hauled back, and the era resolves however
+ * it was going to.
  *
  * The way back is in the footer, beside the era toggle, because that is where
  * this site keeps the controls a visitor is allowed over the simulation. It is

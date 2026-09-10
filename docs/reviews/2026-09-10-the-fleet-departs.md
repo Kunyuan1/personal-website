@@ -53,10 +53,30 @@ about one per 13.6 minutes. With the dwell below it is 4 in 75 minutes on the
 report seeds, one per 18.8 minutes, and that rate is now a reported row.
 
 **And the gate is cheaper than the ticket assumed.** Collapse rate is 1.7/min,
-so civilisation 50 arrives after about **29 minutes** of cumulative watching,
-not the 45-60 the ticket estimated. Left at 50: past the gate the ending is
-then roughly 19 minutes further on, which lands the whole arc inside the
-ticket's original estimate by a different route.
+so civilisation 50 would arrive after about **29 minutes** of cumulative
+watching, not the 45-60 the ticket estimated.
+
+**The gate was then lowered to 25**, which is about 15 minutes. The 50 was
+sized against an ending that persisted, and this change removed that: the
+next visit re-forms the system, so the gate now protects the surprise rather
+than the front page. At 50 the whole arc — approach plus the escape wait —
+came to about 46 minutes of deliberate attention, on a site where the
+simulation freezes whenever the tab is hidden. That is close to nobody, and
+an ending nobody reaches is code with no reader.
+
+Below about 20 there is little left to buy: the approach shrinks but the
+~17-minute escape wait does not, and it is the term that dominates.
+
+| gate | approach | + escape wait | total |
+| --- | --- | --- | --- |
+| 50 | ~29 min | ~17 min | ~46 min |
+| **25** | **~15 min** | **~17 min** | **~32 min** |
+| 20 | ~12 min | ~17 min | ~29 min |
+| 10 | ~6 min | ~17 min | ~23 min |
+
+This is a question about the site rather than the simulation — the same
+shape as the mortality question in #17. The harness gives the rate; it
+cannot say how hard an ending should be to reach.
 
 ## What was built
 
@@ -117,12 +137,12 @@ that reads it. Nothing in the harness could have seen this; it took clicking.
 
 ## Not verified
 
-**The ending arriving on its own.** The trigger is about 19 minutes of watching
+**The ending arriving on its own.** The trigger is about 17 minutes of watching
 away and the preview pane reports `document.hidden`, which freezes the
 simulation, so the live path from a running system to a departure has not been
 watched end to end. What was driven is the panel, both controls, and the return
 visit — with the trigger temporarily forced and then reverted. Worth one real
-session at `localStorage["trisolaris.civilization"] = 50` before this is
+session at `localStorage["trisolaris.civilization"] = 25` before this is
 trusted.
 
 ## Considered and rejected
@@ -283,4 +303,4 @@ not have happened before it. `Begin again` then clears the panel, resets the
 counter to 1 and consumes the flag. What was *not* observed is the restarted
 system going on to run a fresh Chaotic Era, which is the half of finding 1 that
 only a real browser can show. It wants one session with
-`localStorage["trisolaris.civilization"] = 50`.
+`localStorage["trisolaris.civilization"] = 25`.
