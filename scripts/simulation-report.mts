@@ -172,10 +172,6 @@ let survivorFramesOffScreen = 0;
 // and survivors have SURVIVABLE_BAND, but the home world of a civilisation
 // about to die had neither, and reached 6.44 — past the moth's own frame of
 // 6.36 — with the notice arriving later still.
-// Times the simulation reported Trisolaris itself unbound and leaving. Not a
-// pass/fail: the rate is the number #18 needs, and a change in it is a change
-// in how often the site can reach its ending.
-let planetLost = 0;
 let maxHomeInFrame = 0;
 /**
  * The furthest any body moves between two frames, and what the frame was
@@ -486,8 +482,6 @@ for (const seed of [...SEEDS]) {
         // failure class this harness exists to catch — went unnoticed for
         // everything except Trisolaris.
         if (stableBefore) deathsDuringStable++;
-      } else if (event.type === "lost") {
-        planetLost++;
       } else if (event.type === "collapse") {
         collapses++;
         deaths++;
@@ -528,6 +522,11 @@ for (const seed of [...SEEDS]) {
         noticeDelays.push(offScreenSince >= 0 ? simTime - offScreenSince : 0);
         previousNotice = event.cause;
         offScreenSince = -1;
+      } else if (event.type === "lost") {
+        // Counted by its own rig further down, over twice these seeds, because
+        // the rate is a design input and this run alone is too small a sample
+        // to quote one from. Named here anyway so the exhaustiveness check
+        // below stays the thing that catches a new event member.
       } else {
         // Exhaustive on purpose. This chain used to end in a bare `else` that
         // treated anything unrecognised as a collapse, so adding "survived" to
@@ -898,6 +897,30 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
 }
 
 /* --------------------------------------------------------------------------
+   How often Trisolaris is lost, which is the pacing of the site's ending.
+
+   Its own rig, over twice the seeds of the long run, because this number is a
+   design input rather than a bound: #18 gates the ending on it and budgets a
+   visitor's wait against it. The long run alone found 4 events in 75 minutes,
+   and a Poisson interval on n = 4 spans one-per-7-minutes to one-per-70 — too
+   wide to design against, and wide enough that the figure the ticket quotes
+   was not measured by anything that shipped.
+   -------------------------------------------------------------------------- */
+const UNBOUND_SEEDS = [...SEEDS, 1, 42, 777, 2718, 161803];
+const UNBOUND_MINUTES = 15;
+let planetLost = 0;
+for (const seed of UNBOUND_SEEDS) {
+  const sys = createSystem();
+  const rand = mulberry32(seed);
+  for (let f = 0; f < UNBOUND_MINUTES * 60 * SIM_HZ; f++) {
+    for (const event of advance(sys, 1, rand)) {
+      if (event.type === "lost") planetLost++;
+    }
+  }
+}
+const unboundMinutes = UNBOUND_SEEDS.length * UNBOUND_MINUTES;
+
+/* --------------------------------------------------------------------------
    Motion, across every rig above.
 
    These are recorded here rather than beside the long run because they are fed
@@ -926,7 +949,7 @@ record("no world fades in that was already here", fadeInWrong, "0", fadeInWrong 
 // to see the fleet depart. A pass/fail here would be asserting a taste.
 record(
   "Trisolaris reported unbound",
-  `${planetLost} in ${SEEDS.length * MINUTES_PER_SEED} min (one per ${round((SEEDS.length * MINUTES_PER_SEED) / Math.max(1, planetLost), 1)} min)`,
+  `${planetLost} in ${unboundMinutes} min (one per ${round(unboundMinutes / Math.max(1, planetLost), 1)} min)`,
   "reported",
   true,
 );
