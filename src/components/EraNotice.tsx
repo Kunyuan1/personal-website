@@ -38,6 +38,26 @@ const FATES: Record<CollapseCause, { cjk: string; text: string }> = {
 };
 
 /**
+ * How long someone was gone, in the largest unit that still reads naturally.
+ *
+ * Deliberately coarse. "You have been in hibernation for 11 days" is the
+ * sentence; "for 11 days, 4 hours and 12 minutes" is a receipt. Each threshold
+ * overshoots its unit — 90 minutes before hours, 36 hours before days — so
+ * nothing is ever announced as "1 hour" for 61 minutes, or "1 day" for someone
+ * who stepped out after lunch.
+ */
+function formatAway(ms: number): string {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 90) return `${minutes} minutes`;
+  const hours = Math.round(ms / 3600000);
+  if (hours < 36) return `${hours} hours`;
+  const days = Math.round(ms / 86400000);
+  if (days < 60) return `${days} ${days === 1 ? "day" : "days"}`;
+  const months = Math.round(days / 30.44);
+  return `${months} ${months === 1 ? "month" : "months"}`;
+}
+
+/**
  * How a Chaotic Era ended — both ways.
  *
  * A Chaotic Era resolves into exactly one of two outcomes, and measured across
@@ -60,6 +80,9 @@ export default function EraNotice() {
   // badge already uses for Chaotic and Stable, so the notice needs no reading
   // to be placed. Read off `shown`, so the colour survives the fade-out.
   const died = shown?.kind === "collapse";
+  // A hibernation takes neither colour. It is the one notice here that is not
+  // reporting an outcome the animation just showed — it is about the visitor.
+  const dormant = shown?.kind === "hibernation";
 
   // The notice narrates the system in the hero, and only `/` renders Hero.
   // Everywhere else it was a panel describing a simulation with nothing on
@@ -77,25 +100,39 @@ export default function EraNotice() {
       {shown && (
         <p
           className={`max-w-md border bg-void/90 px-5 py-3.5 text-center font-mono text-[11px] leading-relaxed text-muted backdrop-blur-sm ${
-            died ? "border-sun-c/30" : "border-sun-b/30"
+            dormant ? "border-line-bright" : died ? "border-sun-c/30" : "border-sun-b/30"
           }`}
         >
-          <span className={`cjk block ${died ? "text-sun-c" : "text-sun-b"}`}>
-            文明 #{shown.civilization}{" "}
-            {shown.kind === "collapse"
-              ? `已毁灭 · ${FATES[shown.cause].cjk}`
-              : "存续"}
-          </span>
-          <span className="mt-2 block">
-            {shown.kind === "collapse"
-              ? `Civilization ${shown.civilization} was destroyed. ${FATES[shown.cause].text}`
-              : `Civilization ${shown.civilization} survived the Chaotic Era.`}
-          </span>
-          <span className="mt-2 block text-faint">
-            {died
-              ? "The seed of civilization remains, and will germinate again."
-              : "The suns returned to their courses, and the world held its orbit."}
-          </span>
+          {shown.kind === "hibernation" ? (
+            <>
+              <span className="cjk block text-muted">冬眠</span>
+              <span className="mt-2 block">
+                You have been in hibernation for {formatAway(shown.awayMs)}. An estimated{" "}
+                {shown.civilizations.toLocaleString("en-US")} civilizations rose and fell
+                while you were dry.
+              </span>
+              <span className="mt-2 block text-faint">The system does not wait.</span>
+            </>
+          ) : (
+            <>
+              <span className={`cjk block ${died ? "text-sun-c" : "text-sun-b"}`}>
+                文明 #{shown.civilization}{" "}
+                {shown.kind === "collapse"
+                  ? `已毁灭 · ${FATES[shown.cause].cjk}`
+                  : "存续"}
+              </span>
+              <span className="mt-2 block">
+                {shown.kind === "collapse"
+                  ? `Civilization ${shown.civilization} was destroyed. ${FATES[shown.cause].text}`
+                  : `Civilization ${shown.civilization} survived the Chaotic Era.`}
+              </span>
+              <span className="mt-2 block text-faint">
+                {died
+                  ? "The seed of civilization remains, and will germinate again."
+                  : "The suns returned to their courses, and the world held its orbit."}
+              </span>
+            </>
+          )}
         </p>
       )}
     </div>

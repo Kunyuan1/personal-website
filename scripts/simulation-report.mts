@@ -21,6 +21,7 @@ import {
   SIM_HZ,
   SUN_ESCAPE_RADIUS,
   SURVIVABLE_BAND,
+  CIVILIZATIONS_PER_HOUR,
   LETHAL_EXPOSURE,
   SYZYGY_SHARE,
   fluxOn,
@@ -909,12 +910,14 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
 const UNBOUND_SEEDS = [...SEEDS, 1, 42, 777, 2718, 161803];
 const UNBOUND_MINUTES = 15;
 let planetLost = 0;
+let civilizationsLost = 0;
 for (const seed of UNBOUND_SEEDS) {
   const sys = createSystem();
   const rand = mulberry32(seed);
   for (let f = 0; f < UNBOUND_MINUTES * 60 * SIM_HZ; f++) {
     for (const event of advance(sys, 1, rand)) {
       if (event.type === "lost") planetLost++;
+      if (event.type === "collapse") civilizationsLost++;
     }
   }
 }
@@ -947,6 +950,23 @@ record("no world fades in that was already here", fadeInWrong, "0", fadeInWrong 
 // Reported, not asserted. #18 gates the site's ending on this event, so the
 // rate is a design input: how long a visitor past the counter threshold waits
 // to see the fleet depart. A pass/fail here would be asserting a taste.
+// What a returning visitor is told they missed is derived from
+// CIVILIZATIONS_PER_HOUR, and the page cannot check it. So it is checked here.
+// The figure this replaced went 61% wrong sitting still while four other
+// changes moved mortality underneath it, which is exactly the failure a
+// recomputed number cannot have.
+//
+// The tolerance is 8%: measured across these ten seeds the rate is 102/hour,
+// and the spread between seeds is a few per cent, so this catches a model
+// change without firing on seed noise.
+const measuredPerHour = (civilizationsLost / (unboundMinutes * 60)) * 3600;
+const rateDrift = Math.abs(measuredPerHour - CIVILIZATIONS_PER_HOUR) / CIVILIZATIONS_PER_HOUR;
+record(
+  "civilisations per hour matches the constant",
+  `${round(measuredPerHour, 1)} vs ${CIVILIZATIONS_PER_HOUR}`,
+  "within 8%",
+  rateDrift < 0.08,
+);
 record(
   "Trisolaris reported unbound",
   `${planetLost} in ${unboundMinutes} min (one per ${round(unboundMinutes / Math.max(1, planetLost), 1)} min)`,
