@@ -33,7 +33,6 @@ export default function Footer() {
               {stabilised ? "Allow Chaotic Eras" : "Hold Stable Era"}
             </button>
 
-
             {/* The way back from the ending. Rendered only when there is one
                 to come back from — a reset for a system that is running fine
                 is an invitation to wipe a history someone spent an hour on. */}

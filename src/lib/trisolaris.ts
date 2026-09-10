@@ -535,6 +535,19 @@ export type System = {
    * leaving, and `advance` says so once.
    */
   unboundFor: number;
+  /**
+   * The planet is gone and there will be no more civilisations. The suns keep
+   * running and the world keeps coasting on the trajectory that took it away;
+   * nothing resolves, nothing collapses, and heat falls to nothing.
+   *
+   * Set by the page, which owns the counter that decides whether losing
+   * Trisolaris is the end or a catastrophe lived through. Held here rather
+   * than out there because the alternative was for the page to stop calling
+   * `advance` — which freezes the suns mid-chaos and pins `heat` at its
+   * Chaotic Era value for good, leaving the site red and stopped under a line
+   * that says the three suns go on without it.
+   */
+  departed: boolean;
   /** How much of the heat above was taken with all three suns in conjunction. */
   syzygyDose: number;
   /**
@@ -651,6 +664,7 @@ export function createSystem(civilization = 1): System {
     heatExposure: 0,
     coldExposure: 0,
     unboundFor: 0,
+    departed: false,
     syzygyDose: 0,
     ghosts: [],
     kick: null,
@@ -865,14 +879,28 @@ export function fluxOn(planet: Point, suns: Body[]): number {
  * Distance cannot say it — the home world routinely reaches twice its own
  * radius and returns, which is most of what a Chaotic Era looks like.
  *
- * Softened at the same floor the force law uses, so a close pass reports a
- * very deep well rather than an infinite one.
+ * Softened to match `computePlanetAcceleration` exactly — the potential whose
+ * gradient is that force law, `-1/sqrt(d^2 + PLANET_SOFTENING)`, and not a
+ * floor on `d`. The two are not interchangeable: clamping the distance instead
+ * gave -5.77 at d = 0.1 where the integrator is working in a well of -10.0, so
+ * the energy was not conserved along the trajectory it was measuring and close
+ * passes read as more bound than they are. It moves the trigger barely at all,
+ * since a departure is judged far from the suns where the two agree, but an
+ * energy that disagrees with its own force law is not a measurement.
+ *
+ * Note that PLANET_SOFTENING means two different things in this file: the force
+ * law adds it to d^2 un-squared, giving a softening length of sqrt(0.02), while
+ * `fluxOn` squares it first. That disagreement is older than this function and
+ * is left alone deliberately — flux feeds the exposure thresholds that #17 swept
+ * to choose SCORCH_MULTIPLE and FREEZE_FRACTION, and changing what it means
+ * would move every one of those numbers for no gain here.
  */
 export function specificEnergy(planet: Body, suns: Body[]): number {
   let potential = 0;
   for (const sun of suns) {
-    const d = Math.hypot(sun.x - planet.x, sun.y - planet.y);
-    potential -= 1 / Math.max(d, PLANET_SOFTENING);
+    const dx = sun.x - planet.x;
+    const dy = sun.y - planet.y;
+    potential -= G / Math.sqrt(dx * dx + dy * dy + PLANET_SOFTENING);
   }
   return (planet.vx * planet.vx + planet.vy * planet.vy) / 2 + potential;
 }
@@ -1291,9 +1319,17 @@ export function advance(
 
     // Heat trails the era rather than tracking it, and cools far more slowly
     // than it builds, so the page fades back to black instead of cutting.
-    const target = sys.era === "chaotic" ? 1 : 0;
+    // A departed system cools whatever era it was in when it ended: there is
+    // nobody left for it to be a Chaotic Era for.
+    const target = sys.era === "chaotic" && !sys.departed ? 1 : 0;
     const tau = target > sys.heat ? HEAT_RISE : HEAT_FALL;
     sys.heat += (target - sys.heat) * (1 - Math.exp(-SIM_FRAME_TIME / tau));
+
+    // Everything above still runs when the planet has gone: the suns are
+    // integrated, trails are recorded, ghosts fade and heat falls away.
+    // Everything below decides the fate of a civilisation, and there is not
+    // one to decide.
+    if (sys.departed) continue;
 
     // Worlds are only at risk once the suns are actually moving freely.
     if (!settling) {

@@ -40,7 +40,11 @@ const DEPARTED_KEY = "trisolaris.departed";
  * Measured, a collapse lands every 35 seconds or so, which puts this about 29
  * minutes of cumulative watching away — spread over as many visits as someone
  * likes, since the counter persists. Past it, the simulation reports the
- * planet unbound about once every 19 minutes.
+ * planet unbound about once every 17 minutes — 9 events over 150 simulated
+ * minutes, from the rig `npm run sim:report` runs for exactly this number.
+ * It used to be quoted from the long run alone, which found 4 events in 75
+ * minutes: a sample whose Poisson interval spans one-per-7-minutes to
+ * one-per-70, which is not a figure to budget a visitor's wait against.
  *
  * The gate lives here rather than in the simulation because the counter does.
  * `advance` reports what happened to the planet and decides nothing, which is
@@ -139,10 +143,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
   const stabilisedRef = useRef(false);
   // Read inside the frame loop, which must not close over React state.
   const departedRef = useRef(false);
-  // Published by the frame loop rather than set here, for the same reason the
-  // restored civilisation is: an effect body that calls setState synchronously
-  // cascades a render before the first paint.
-  const returnedAfterRef = useRef<number | null>(null);
   /** See `Renderer`. In a ref, so advancing it costs no React render. */
   const hydrationRef = useRef(1);
 
@@ -228,7 +228,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         // both. Measured the hard way: driven in a hidden tab it never
         // appeared at all.
         const departedFrom = Math.floor(departedAt);
-        returnedAfterRef.current = departedFrom;
         queueMicrotask(() => setReturnedAfter(departedFrom));
         saved = 1;
         localStorage.removeItem(DEPARTED_KEY);
@@ -280,32 +279,55 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     let lastEra: Era = system.era;
     let lastHeat = -1;
     let lastCivilization = system.civilization;
-    let lastReturnedAfter: number | null = null;
     let lastStabilised = pinned;
+    // Which system the mirrors above describe. `beginAgain` swaps in a new one.
+    let lastSystem = system;
 
     const tick = (now: number) => {
+      // Read the system from the ref every frame rather than closing over the
+      // one built here. `beginAgain` puts a *new* system in the ref, and a
+      // loop still holding the old one simply repainted it on the next frame:
+      // the replacement was drawn once and then discarded, so the ending had
+      // no working way out of it — the counter said #1 while a departed
+      // system carried on underneath, still red, still unbound.
+      const sys = systemRef.current;
+      if (!sys) {
+        frame = requestAnimationFrame(tick);
+        return;
+      }
+      // A swap invalidates every mirror below, which exists to avoid
+      // publishing a value that has not changed. Left alone they describe the
+      // system that is gone, and no correction is ever pushed.
+      if (sys !== lastSystem) {
+        lastSystem = sys;
+        lastEra = sys.era;
+        lastCivilization = sys.civilization;
+        lastStabilised = stabilisedRef.current;
+        lastHeat = -1;
+      }
       if (!running) return;
 
       const delta = Math.min((now - last) / 1000, MAX_CATCHUP);
       last = now;
       accumulator += delta;
 
-      let frames = Math.floor(accumulator * SIM_HZ);
+      const frames = Math.floor(accumulator * SIM_HZ);
       accumulator -= frames / SIM_HZ;
 
       // Honoured inside the simulation, which re-anchors the suns onto the
       // periodic solution rather than perturbing them. Forcing era and
       // eraElapsed from out here instead only stopped the *clock*: the suns
       // kept drifting, and the worlds went on dying under a Stable Era label.
-      system.pinned = stabilisedRef.current;
+      sys.pinned = stabilisedRef.current;
 
-      // Departed: the system is stopped where it ended. The canvas keeps
-      // drawing it, so the last configuration stays on screen under the
-      // notice rather than the hero going blank.
-      if (departedRef.current) frames = 0;
 
       for (let i = 0; i < frames; i++) {
-        for (const event of advance(system, 1)) {
+        for (const event of advance(sys, 1)) {
+          // The batch can be up to MAX_CATCHUP long, so a departure at frame
+          // 5 of 30 used to leave 25 more to run: the era resolved, a
+          // collapse notice landed on top of the departure panel, and the
+          // counter wrote a civilisation the ending had already ruled out.
+          if (departedRef.current) break;
           // Dismissing clears `noticeVisible` and leaves `notice` standing, so
           // the panel has text to fade out with. Clearing the notice itself
           // unmounted the text in the same commit that started the wrapper's
@@ -328,6 +350,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
             // have. Above it, the fleet leaves.
             if (event.civilization >= DEPARTURE_AT && !departedRef.current) {
               departedRef.current = true;
+              sys.departed = true;
               setDeparted(true);
               setNoticeVisible(false);
               try {
@@ -345,9 +368,9 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (system.era !== lastEra) {
-        lastEra = system.era;
-        setEra(system.era);
+      if (sys.era !== lastEra) {
+        lastEra = sys.era;
+        setEra(sys.era);
       }
 
       // Rehydration, if one is running. Everything downstream reads it, so
@@ -370,25 +393,21 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       // rehydration so a returning visitor warms back up to the era they left
       // rather than being dropped into it — and scaled here, at the one place
       // heat reaches the page, so the canvas cannot disagree with the palette.
-      const heat = Math.round(system.heat * hydrationRef.current * 100) / 100;
+      const heat = Math.round(sys.heat * hydrationRef.current * 100) / 100;
       if (heat !== lastHeat) {
         lastHeat = heat;
         document.documentElement.style.setProperty("--heat", String(heat));
       }
-      if (system.civilization !== lastCivilization) {
-        lastCivilization = system.civilization;
-        setCivilization(system.civilization);
-      }
-      if (returnedAfterRef.current !== lastReturnedAfter) {
-        lastReturnedAfter = returnedAfterRef.current;
-        setReturnedAfter(lastReturnedAfter);
+      if (sys.civilization !== lastCivilization) {
+        lastCivilization = sys.civilization;
+        setCivilization(sys.civilization);
       }
       if (stabilisedRef.current !== lastStabilised) {
         lastStabilised = stabilisedRef.current;
         setStabilisedState(stabilisedRef.current);
       }
 
-      rendererRef.current?.(system, hydrationRef.current);
+      rendererRef.current?.(sys, hydrationRef.current);
       frame = requestAnimationFrame(tick);
     };
 
