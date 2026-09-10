@@ -182,6 +182,30 @@ export const SYZYGY_DOMINANCE = 0.6;
 export const WORLD_FADE_TIME = 1.6;
 
 /**
+ * How many civilisations rise and fall per hour of watching.
+ *
+ * What a returning visitor is told they missed is derived from this, so it is
+ * a number the page states as fact and cannot check. It is therefore
+ * re-measured by `npm run sim:report`, which fails if this value has drifted
+ * from what the simulation actually does — the same arrangement `homeFlux` and
+ * `homeExcursion` have, and for a better reason than either.
+ *
+ * A comment recording where a number came from is not enough, and this
+ * constant is the proof. The figure it replaces — 63.2 per hour, 1,517 a day —
+ * was measured honestly and then went 61% wrong sitting still, because #15,
+ * #17, #19 and #21 changed what ends a Chaotic Era. Only a collapse advances
+ * the counter, so raising mortality from 66% to 73% raised this directly, and
+ * nothing anywhere noticed.
+ *
+ * Measured over 150 minutes of watching across ten seeds: 255 collapses, mean
+ * 34.5s apart. The distribution is badly skewed — median 26.5s against a worst
+ * of 209.1s — which is why this is expressed per hour rather than as a mean
+ * gap. An hour is long enough for the tail to average out; a single interval
+ * is not, and quoting one would be quoting noise at a visitor.
+ */
+export const CIVILIZATIONS_PER_HOUR = 102;
+
+/**
  * Adaptive time-stepping for close encounters.
  *
  * A fixed step cannot follow two suns slinging past each other: the force

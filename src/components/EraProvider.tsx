@@ -12,6 +12,7 @@ import {
 
 import {
   advance,
+  CIVILIZATIONS_PER_HOUR,
   createSystem,
   SIM_HZ,
   type CollapseCause,
@@ -33,6 +34,23 @@ const STABILISED_KEY = "trisolaris.stabilised";
  * the system itself comes back.
  */
 const DEPARTED_KEY = "trisolaris.departed";
+/**
+ * When this visitor was last here, in epoch milliseconds. Written whenever the
+ * page goes away and read once on the way back, to work out how long the
+ * hibernation lasted.
+ */
+const LAST_SEEN_KEY = "trisolaris.lastSeen";
+/**
+ * How long away counts as a hibernation rather than a moment's inattention.
+ *
+ * Half an hour, from the ticket. Well clear of DEHYDRATION_MS, which is the
+ * five seconds that make the *animation* treat a return as a rehydration:
+ * that one is about the trails being dry, this one is about telling somebody
+ * what they missed, and they should not fire together on a lunch break.
+ */
+const HIBERNATION_MIN_MS = 30 * 60 * 1000;
+/** The hibernation notice is three sentences, and needs longer than a death. */
+const HIBERNATION_NOTICE_MS = 11000;
 /**
  * How many civilisations must have come and gone before the simulation losing
  * Trisolaris means the end rather than a catastrophe lived through.
@@ -99,7 +117,19 @@ type Renderer = (system: System, hydration: number) => void;
  */
 export type Notice =
   | { kind: "collapse"; civilization: number; cause: CollapseCause }
-  | { kind: "survived"; civilization: number };
+  | { kind: "survived"; civilization: number }
+  /**
+   * How long this visitor was gone, and what the system did without them.
+   *
+   * `civilizations` is an estimate and is deliberately not added to the
+   * counter: the simulation is paused while nobody is looking, so none of it
+   * literally happened. Advancing the count instead would make a visitor
+   * civilisation #40,000 within a month, and the number would stop meaning
+   * anything. The copy says *estimated* and carries the inconsistency in the
+   * open, which is more interesting than an illusion that has to be
+   * maintained.
+   */
+  | { kind: "hibernation"; awayMs: number; civilizations: number };
 
 type EraContextValue = {
   era: Era;
@@ -217,6 +247,8 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     // anything can be written, and a fractional civilisation indexes no orbit.
     let saved = 1;
     let pinned = false;
+    let skipHibernation = false;
+    let hibernationTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       const raw = Number(localStorage.getItem(CIVILIZATION_KEY));
       if (Number.isFinite(raw) && raw >= 1) saved = Math.floor(raw);
@@ -245,9 +277,36 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         saved = 1;
         localStorage.removeItem(DEPARTED_KEY);
         localStorage.setItem(CIVILIZATION_KEY, "1");
+        // A departure already has something to say to this visitor, so the
+        // hibernation notice stands down for the visit. Two one-shot
+        // messages about what someone missed, stacked on one load, read as a
+        // changelog rather than as either of the things they are — and the
+        // departure is the rarer and more specific of the two.
+        skipHibernation = true;
       }
     } catch {
       // No storage: there was no departure to come back from either.
+    }
+
+    // How long they were away, and what to say about it. Published on a
+    // microtask rather than through the frame loop, for the reason the
+    // departure acknowledgement is: the loop does not run for a visitor who
+    // prefers reduced motion, or one whose tab is hidden at load, and this
+    // is a one-shot message that has to survive both.
+    try {
+      const lastSeen = Number(localStorage.getItem(LAST_SEEN_KEY));
+      localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
+      const awayMs = Number.isFinite(lastSeen) && lastSeen > 0 ? Date.now() - lastSeen : 0;
+      if (!skipHibernation && awayMs >= HIBERNATION_MIN_MS) {
+        const civilizations = Math.round((awayMs / 3600000) * CIVILIZATIONS_PER_HOUR);
+        queueMicrotask(() => {
+          setNotice({ kind: "hibernation", awayMs, civilizations });
+          setNoticeVisible(true);
+          hibernationTimer = setTimeout(() => setNoticeVisible(false), HIBERNATION_NOTICE_MS);
+        });
+      }
+    } catch {
+      // No storage: no gap to measure, and nothing to say about it.
     }
 
     // Applied to the system rather than to React state, so the server and
@@ -434,6 +493,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         running = false;
         cancelAnimationFrame(frame);
         hiddenAt = performance.now();
+        rememberVisit();
         return;
       }
 
@@ -460,13 +520,27 @@ export default function EraProvider({ children }: { children: ReactNode }) {
 
       frame = requestAnimationFrame(tick);
     };
+    // `pagehide` as well as visibility, because a tab that is closed outright
+    // never goes hidden first, and `beforeunload` is not delivered reliably on
+    // mobile. Between them the last visit is recorded however the page ends.
+    const rememberVisit = () => {
+      try {
+        localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
+      } catch {
+        // Nothing to remember with.
+      }
+    };
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", rememberVisit);
 
     return () => {
       running = false;
       cancelAnimationFrame(frame);
       clearTimeout(noticeTimer);
+      clearTimeout(hibernationTimer);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", rememberVisit);
+      rememberVisit();
     };
   }, []);
 
