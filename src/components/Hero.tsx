@@ -5,11 +5,7 @@ import Link from "next/link";
 import { useEra } from "@/components/EraProvider";
 import SystemCanvas from "@/components/SystemCanvas";
 import { site } from "@/data/site";
-
-const ERA_LABEL = {
-  stable: { cjk: "恒纪元", en: "Stable Era", color: "text-sun-b", dot: "bg-sun-b" },
-  chaotic: { cjk: "混沌纪元", en: "Chaotic Era", color: "text-sun-c", dot: "bg-sun-c" },
-} as const;
+import { ERA_LABEL } from "@/lib/era-label";
 
 export default function Hero() {
   const { era, civilization } = useEra();

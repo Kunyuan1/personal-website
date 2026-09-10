@@ -25,29 +25,41 @@ function walk(dir, out = []) {
  *
  * `CJK_GLYPHS` lives in `src/data/site.ts`, which this walk reads like any
  * other file — so every declared glyph was landing in `used` by virtue of being
- * declared, and the unused warning below could never fire. It was dead from the
+ * declared, and the unused check below could never fire. It was dead from the
  * day it was written. Stripping the literal before counting gives it back its
  * job: dropping a phrase from the site now leaves its glyphs visibly orphaned
  * in the font subset instead of silently padding it.
  */
-const DECLARATION = /export const CJK_GLYPHS =\s*"[^"]*"/;
+const DECLARATION = /export const CJK_GLYPHS =\s*"([^"]*)"/;
+
+// Parsed once, and the same match is what gets stripped below. Two copies of
+// this pattern kept in sync by hand is the shape of the bug this file just
+// grew a fix for: if they ever drifted, the strip would miss the declaration
+// and every declared glyph would count as used again.
+const source = readFileSync("src/data/site.ts", "utf8");
+const declaration = source.match(DECLARATION);
+const declared = new Set((declaration?.[1] ?? "").split(""));
 
 const used = new Set();
 for (const file of walk("src")) {
-  const text = readFileSync(file, "utf8").replace(DECLARATION, "");
+  let text = readFileSync(file, "utf8");
+  if (declaration) text = text.replace(declaration[0], "");
   for (const char of text.match(CJK) ?? []) used.add(char);
 }
-
-const source = readFileSync("src/data/site.ts", "utf8");
-const declared = new Set(
-  (source.match(/export const CJK_GLYPHS =\s*"([^"]*)"/)?.[1] ?? "").split(""),
-);
 
 const missing = [...used].filter((c) => !declared.has(c));
 const unused = [...declared].filter((c) => !used.has(c));
 
+// Both directions exit non-zero. A warning is what the unused half used to be,
+// and it is how twenty dead glyphs accumulated in the subset over several
+// months: the line printed into a passing log and nobody reads a passing log.
+// Dropping a phrase from the site is now a two-line change — the copy, and the
+// glyphs it was the only user of.
 if (unused.length) {
-  console.warn(`Subset declares ${unused.length} unused glyph(s): ${unused.join("")}`);
+  console.error(
+    `\n${unused.length} glyph(s) declared in CJK_GLYPHS but used nowhere: ${unused.join("")}\n` +
+      `Remove them, or the font subset carries weight no page asks for.\n`,
+  );
 }
 
 if (missing.length) {
@@ -55,7 +67,8 @@ if (missing.length) {
     `\n${missing.length} glyph(s) used but missing from CJK_GLYPHS: ${missing.join("")}\n` +
       `Add them, or they will fall back to the visitor's system font.\n`,
   );
-  process.exit(1);
 }
+
+if (unused.length || missing.length) process.exit(1);
 
 console.log(`All ${used.size} Chinese glyphs are covered by the font subset.`);

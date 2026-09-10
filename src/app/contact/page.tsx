@@ -76,7 +76,13 @@ export default function ContactPage() {
                     <span className="mt-2.5 block truncate text-base text-ink">
                       {channel.value}
                     </span>
-                    <span className="mt-1.5 block font-mono text-[11px] text-faint/70">
+                    {/* Flavour, and inside the anchor — so it is hidden from
+                        the accessible name rather than appended to every
+                        address a screen reader reads out. */}
+                    <span
+                      aria-hidden
+                      className="mt-1.5 block font-mono text-[11px] text-faint"
+                    >
                       {channel.band}
                     </span>
                   </span>
@@ -96,9 +102,9 @@ export default function ContactPage() {
             above is the transmission this is the answer to. */}
         <Reveal delay={400}>
           <p className="mt-16 max-w-md font-mono text-[11px] leading-relaxed text-faint/70">
-            <span className="cjk">不要回答</span> · Do not answer. The universe is a
-            dark forest, and broadcasting your position is generally inadvisable —
-            but this one is fine, I checked.
+            <span className="cjk">不要回答</span> · Do not answer. She answered anyway.
+            The universe is a dark forest, and broadcasting your position is
+            generally inadvisable — but this one is fine, I checked.
           </p>
         </Reveal>
       </div>

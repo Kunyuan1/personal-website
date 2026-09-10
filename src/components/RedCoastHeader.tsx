@@ -1,6 +1,7 @@
 "use client";
 
 import { useEra } from "@/components/EraProvider";
+import { ERA_LABEL } from "@/lib/era-label";
 
 /**
  * The console above the contact channels.
@@ -23,9 +24,14 @@ import { useEra } from "@/components/EraProvider";
  * server renders, so the first paint is a complete, truthful console that
  * corrects itself to this visitor's own history a frame later. There is no
  * empty state to flash and nothing that changes size when it fills in.
+ *
+ * The cost of being live, in full: a third state. Static text cannot go stale
+ * and live text can, and `departed` below is the one state this readout could
+ * otherwise never leave.
  */
 export default function RedCoastHeader() {
-  const { era, civilization } = useEra();
+  const { era, civilization, departed } = useEra();
+  const label = ERA_LABEL[era];
   const chaotic = era === "chaotic";
 
   return (
@@ -35,22 +41,49 @@ export default function RedCoastHeader() {
         Red Coast Transmission
       </p>
 
-      <p className="mt-2 text-faint/70">
-        Carrier: solar amplification
-        <span className="mx-2 text-line-bright">·</span>
-        {/* The one line that moves. Read from the same system as the hero, so
-            it says "unstable" while the suns are actually being thrown about
-            rather than on a schedule of its own. */}
-        <span className={chaotic ? "text-sun-c" : undefined}>
-          Gain {chaotic ? "unstable" : "nominal"}
-        </span>
-      </p>
+      {/*
+        Three states, not two.
 
-      <p className="mt-1 text-faint/70">
-        Era: {chaotic ? "Chaotic" : "Stable"}
-        <span className="mx-2 text-line-bright">·</span>
-        Civilization #{civilization}
-      </p>
+        A departure can only happen inside a Chaotic Era — `lost` is pushed from
+        the chaotic branch of `advance` — and a departed system then skips every
+        era transition for good, so `sys.era` is frozen at "chaotic" from that
+        moment on. Read as two states, this console spent the rest of the
+        session holding a crimson `Gain unstable` over a page whose heat had
+        decayed to black, about a system with nothing left to be unstable: the
+        one element here whose whole premise is that it is live was the only one
+        that could never update again.
+      */}
+      {departed ? (
+        <>
+          <p className="mt-2 text-faint">
+            Carrier: none
+            <span className="mx-2 text-line-bright">·</span>
+            Signal lost
+          </p>
+          <p className="mt-1 text-faint">Last transmission: civilization #{civilization}</p>
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-faint">
+            Carrier: solar amplification
+            <span className="mx-2 text-line-bright">·</span>
+            {/* The one line that moves. Read from the same system as the hero,
+                so it says "unstable" while the suns are actually being thrown
+                about rather than on a schedule of its own. */}
+            <span className={chaotic ? label.color : undefined}>
+              Gain {chaotic ? "unstable" : "nominal"}
+            </span>
+          </p>
+
+          <p className="mt-1 text-faint">
+            {/* Coloured the way the hero colours its badge: the era takes the
+                era's colour and the number beside it stays quiet. */}
+            Era: <span className={label.color}>{label.short}</span>
+            <span className="mx-2 text-line-bright">·</span>
+            Civilization #{civilization}
+          </p>
+        </>
+      )}
     </div>
   );
 }
