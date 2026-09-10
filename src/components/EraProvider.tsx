@@ -37,21 +37,34 @@ const DEPARTED_KEY = "trisolaris.departed";
  * How many civilisations must have come and gone before the simulation losing
  * Trisolaris means the end rather than a catastrophe lived through.
  *
- * Measured, a collapse lands every 35 seconds or so, which puts this about 29
+ * Measured, a collapse lands every 35 seconds or so, which puts this about 15
  * minutes of cumulative watching away — spread over as many visits as someone
- * likes, since the counter persists. Past it, the simulation reports the
+ * likes, since the counter persists, and counting only time actually spent
+ * looking, because a hidden tab dehydrates. Past it, the simulation reports the
  * planet unbound about once every 17 minutes — 9 events over 150 simulated
  * minutes, from the rig `npm run sim:report` runs for exactly this number.
  * It used to be quoted from the long run alone, which found 4 events in 75
  * minutes: a sample whose Poisson interval spans one-per-7-minutes to
  * one-per-70, which is not a figure to budget a visitor's wait against.
  *
+ * It was 50, sized against an ending that persisted — a permanently dead hero
+ * on the front of a portfolio was a cost worth putting half an hour in front
+ * of. That ending is gone: DEPARTED_KEY now re-forms the system on the next
+ * visit, so what the gate protects is only the surprise, and the whole arc at
+ * 50 came to about 46 minutes of deliberate attention. Nobody was ever going
+ * to spend that, and an ending nobody reaches is code with no reader.
+ *
+ * 25 halves the approach without making it reachable by accident: 15 minutes
+ * of *watching* is far more than a first visit, and the escape wait past the
+ * gate is unchanged. Going lower buys little, since that 17-minute wait is the
+ * term that dominates and no gate can shorten it.
+ *
  * The gate lives here rather than in the simulation because the counter does.
  * `advance` reports what happened to the planet and decides nothing, which is
  * also what makes this trivially testable: set
- * `localStorage["trisolaris.civilization"]` to 50 and wait.
+ * `localStorage["trisolaris.civilization"]` to 25 and wait.
  */
-const DEPARTURE_AT = 50;
+const DEPARTURE_AT = 25;
 /** Most simulation time a single animation frame may catch up on, in seconds. */
 const MAX_CATCHUP = 0.5;
 /** How long the collapse notice stays on screen. */
