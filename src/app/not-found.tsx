@@ -2,9 +2,17 @@ import Link from "next/link";
 
 import DropletCanvas from "@/components/DropletCanvas";
 
+const NOTHING_HERE = "There is nothing at this address.";
+
 export const metadata = {
   title: "404",
-  description: "There is nothing at this address.",
+  description: NOTHING_HERE,
+  // The root layout sets `openGraph.description` and `twitter.description`
+  // absolutely, and metadata merges per key — so without these a dead link
+  // pasted into Slack unfurled as "404 — Kunyuan Hu" over a blurb advertising
+  // real-time systems and game projects.
+  openGraph: { title: "404 — Kunyuan Hu", description: NOTHING_HERE },
+  twitter: { title: "404 — Kunyuan Hu", description: NOTHING_HERE },
 };
 
 /**
@@ -25,7 +33,11 @@ export const metadata = {
  */
 export default function NotFound() {
   return (
-    <div className="flex min-h-[calc(100svh-4rem)] flex-col items-center justify-center px-6 py-16">
+    // Sized to leave room for the nav above and the footer below, so the page
+    // is one screen with nothing to scroll to. `100svh - 4rem` is the hero's
+    // measurement, where overflowing is the point because there is a page
+    // underneath; here there is not.
+    <div className="flex min-h-[68svh] flex-col items-center justify-center px-6 py-16">
       {/* Above the words, not behind them. Laid over the copy, the three
           highlights land on whatever sentence happens to be under them and both
           the object and the text stop being legible. */}
@@ -37,7 +49,7 @@ export default function NotFound() {
           404
         </p>
 
-        <p className="mt-6 text-2xl text-ink">It came in peace.</p>
+        <h1 className="mt-6 text-2xl text-ink">It came in peace.</h1>
 
         <p className="mt-3 text-sm text-muted">There is nothing at this address.</p>
 

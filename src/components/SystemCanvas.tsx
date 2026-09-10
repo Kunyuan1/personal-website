@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { useEra } from "@/components/EraProvider";
+import { groundFor } from "@/lib/canvas-ground";
 import {
   frameRadiusFor,
   HOME_COLOR,
@@ -18,16 +19,6 @@ import {
 
 /** Trails are stroked in bands rather than per-segment, to keep it cheap. */
 const TRAIL_BANDS = 14;
-
-/**
- * The canvas is opaque, so it has to repaint the page's own background or the
- * hero would stay a cold rectangle while the rest of the site goes red. These
- * must match --void in globals.css for the two eras.
- */
-const CANVAS_GROUND = {
-  stable: [5, 6, 10],
-  chaotic: [27, 10, 10],
-} as const;
 
 /**
  * Draws the Trisolaran system. Owns no simulation state — EraProvider runs the
@@ -240,11 +231,9 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       // so the canvas and the page can never drift out of step — including
       // through a rehydration, which scales both by the same progress value.
       const warmth = system.heat * hydration;
-      const cold = CANVAS_GROUND.stable;
-      const hot = CANVAS_GROUND.chaotic;
-      const r = Math.round(cold[0] + (hot[0] - cold[0]) * warmth);
-      const g = Math.round(cold[1] + (hot[1] - cold[1]) * warmth);
-      const b = Math.round(cold[2] + (hot[2] - cold[2]) * warmth);
+      // Shared with the droplet canvas, so a second canvas cannot be written
+      // without the rule this comment states. See canvas-ground.ts.
+      const [r, g, b] = groundFor(warmth);
 
       ctx.globalCompositeOperation = "source-over";
       ctx.globalAlpha = 1;
