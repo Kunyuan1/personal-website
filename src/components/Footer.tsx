@@ -4,7 +4,8 @@ import { useEra } from "@/components/EraProvider";
 import { site } from "@/data/site";
 
 export default function Footer() {
-  const { stabilised, setStabilised, civilization } = useEra();
+  const { stabilised, setStabilised, civilization, departed, returnedAfter, beginAgain } =
+    useEra();
 
   return (
     <footer className="relative z-10 border-t border-line">
@@ -32,6 +33,26 @@ export default function Footer() {
               {stabilised ? "Allow Chaotic Eras" : "Hold Stable Era"}
             </button>
 
+
+            {/* The way back from the ending. Rendered only when there is one
+                to come back from — a reset for a system that is running fine
+                is an invitation to wipe a history someone spent an hour on. */}
+            {departed ? (
+              <button
+                type="button"
+                onClick={beginAgain}
+                className="font-mono text-xs text-faint underline-offset-4 transition-colors hover:text-ink hover:underline"
+              >
+                Begin again
+              </button>
+            ) : null}
+
+            {/* Said once, on the visit after the fleet left. */}
+            {returnedAfter !== null ? (
+              <p className="font-mono text-xs text-faint/70">
+                Fleet departed after #{returnedAfter} · system re-formed
+              </p>
+            ) : null}
             {/* 不要回答 — the warning sent back across four light years. */}
             <p
               className="font-mono text-xs text-faint/70"

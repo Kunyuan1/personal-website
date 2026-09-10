@@ -172,6 +172,10 @@ let survivorFramesOffScreen = 0;
 // and survivors have SURVIVABLE_BAND, but the home world of a civilisation
 // about to die had neither, and reached 6.44 — past the moth's own frame of
 // 6.36 — with the notice arriving later still.
+// Times the simulation reported Trisolaris itself unbound and leaving. Not a
+// pass/fail: the rate is the number #18 needs, and a change in it is a change
+// in how often the site can reach its ending.
+let planetLost = 0;
 let maxHomeInFrame = 0;
 /**
  * The furthest any body moves between two frames, and what the frame was
@@ -482,6 +486,8 @@ for (const seed of [...SEEDS]) {
         // failure class this harness exists to catch — went unnoticed for
         // everything except Trisolaris.
         if (stableBefore) deathsDuringStable++;
+      } else if (event.type === "lost") {
+        planetLost++;
       } else if (event.type === "collapse") {
         collapses++;
         deaths++;
@@ -915,6 +921,15 @@ record(
 // as well, which is where the two measures happen to meet: the worst change is
 // 0.151 at the start of a settle, so the same headroom applies.
 record("no world fades in that was already here", fadeInWrong, "0", fadeInWrong === 0);
+// Reported, not asserted. #18 gates the site's ending on this event, so the
+// rate is a design input: how long a visitor past the counter threshold waits
+// to see the fleet depart. A pass/fail here would be asserting a taste.
+record(
+  "Trisolaris reported unbound",
+  `${planetLost} in ${SEEDS.length * MINUTES_PER_SEED} min (one per ${round((SEEDS.length * MINUTES_PER_SEED) / Math.max(1, planetLost), 1)} min)`,
+  "reported",
+  true,
+);
 record(
   "the animation never whips",
   `worst ${round(worstJerk)} (${worstJerkWhat})`,

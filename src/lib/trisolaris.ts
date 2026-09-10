@@ -288,6 +288,19 @@ export const SETTLE_START_RADIUS = SUN_ESCAPE_RADIUS;
 /** Inside this of any sun, a planet is consumed. */
 export const BURN_RADIUS = 0.22;
 
+/**
+ * How long Trisolaris must be unbound *and* outside its own orbit before the
+ * simulation will say the planet is leaving.
+ *
+ * A dwell rather than an instant, for the same reason LETHAL_EXPOSURE is one:
+ * a single frame of positive energy is what a slingshot looks like from the
+ * inside, and a world can pick one up and be pulled back by the next sun it
+ * passes. Measured over 150 simulated minutes, 28 Chaotic Eras touch positive
+ * energy at some point and only 18 hold it for a full unit of simulation time.
+ * The difference is the transients.
+ */
+export const UNBOUND_DWELL = 1;
+
 export const SUN_COLORS = ["#e6a94c", "#7fb2ff", "#d4544a"] as const;
 /** The home world. Deliberately the brightest, coolest thing on screen. */
 export const HOME_COLOR = "#bcd3e8";
@@ -516,6 +529,12 @@ export type System = {
    */
   heatExposure: number;
   coldExposure: number;
+  /**
+   * Simulation time Trisolaris has spent unbound *and* outside its own orbit,
+   * reset when a new Chaotic Era begins. Past UNBOUND_DWELL the planet is
+   * leaving, and `advance` says so once.
+   */
+  unboundFor: number;
   /** How much of the heat above was taken with all three suns in conjunction. */
   syzygyDose: number;
   /**
@@ -541,7 +560,27 @@ export type SimEvent =
    * indistinguishable on screen from a death whose notice had failed.
    */
   | { type: "survived"; civilization: number }
-  | { type: "worldLost"; remaining: number };
+  | { type: "worldLost"; remaining: number }
+  /**
+   * Trisolaris itself is no longer bound to the three suns: positive specific
+   * orbital energy, outside its own orbit, for long enough that it is leaving
+   * rather than being flung about. The planet is lost, not a civilisation.
+   *
+   * The simulation reports it and decides nothing. Whether this is the end of
+   * the world or a catastrophe survived depends on how many civilisations have
+   * come and gone, and that count lives in `localStorage` where the page keeps
+   * it — so the gate is the page's, and this event fires either way.
+   *
+   * Chosen over a collision because a collision does not happen. Measured over
+   * 150 simulated minutes and 338 Chaotic Eras, the home world never came
+   * within the radius of the disc it is drawn as; the closest approach ever
+   * seen was 0.0326 against a drawn core of 0.024. Letting a doomed era play
+   * out past its exposure death does produce hits — 3 of 308 eras get inside
+   * the core — which says the trajectory exists and the scorching always gets
+   * there first. Making it fire would mean exempting a falling world from the
+   * death that #17 established, so it is not a trigger, it is a near miss.
+   */
+  | { type: "lost"; civilization: number };
 
 function sunsFor(orbit: Orbit): Body[] {
   return [
@@ -611,6 +650,7 @@ export function createSystem(civilization = 1): System {
     orbitWrecked: false,
     heatExposure: 0,
     coldExposure: 0,
+    unboundFor: 0,
     syzygyDose: 0,
     ghosts: [],
     kick: null,
@@ -813,6 +853,28 @@ export function fluxOn(planet: Point, suns: Body[]): number {
     total += 1 / (dx * dx + dy * dy + PLANET_SOFTENING * PLANET_SOFTENING);
   }
   return total;
+}
+
+/**
+ * Specific orbital energy of a world against the three suns — kinetic per unit
+ * mass, plus the potential of all three.
+ *
+ * Negative is bound: whatever chaos is doing to it, the world is still on some
+ * orbit of this system and will come back. Positive is not, and that is the
+ * only honest way to say a planet has been *lost* rather than thrown about.
+ * Distance cannot say it — the home world routinely reaches twice its own
+ * radius and returns, which is most of what a Chaotic Era looks like.
+ *
+ * Softened at the same floor the force law uses, so a close pass reports a
+ * very deep well rather than an infinite one.
+ */
+export function specificEnergy(planet: Body, suns: Body[]): number {
+  let potential = 0;
+  for (const sun of suns) {
+    const d = Math.hypot(sun.x - planet.x, sun.y - planet.y);
+    potential -= 1 / Math.max(d, PLANET_SOFTENING);
+  }
+  return (planet.vx * planet.vx + planet.vy * planet.vy) / 2 + potential;
 }
 
 /**
@@ -1196,6 +1258,27 @@ export function advance(
         } else if (flux < coolest * FREEZE_FRACTION) {
           sys.coldExposure += advanced;
         }
+
+        // Is the planet itself leaving? Energy rather than distance, and
+        // outside its own orbit as well, so that a world picking up speed on
+        // its way *through* the system cannot read as one departing it.
+        //
+        // This ends nothing here. The era resolves by exposure and by the band
+        // exactly as it always has, and the page decides what the event means:
+        // below the counter's threshold a civilisation lives through the worst
+        // thing that has ever happened to it, and above it, the fleet leaves.
+        const leaving =
+          specificEnergy(home, sys.suns) > 0 &&
+          Math.hypot(home.x, home.y) > home.home;
+        if (leaving) {
+          const before = sys.unboundFor;
+          sys.unboundFor += advanced;
+          if (before < UNBOUND_DWELL && sys.unboundFor >= UNBOUND_DWELL) {
+            events.push({ type: "lost", civilization: sys.civilization });
+          }
+        } else {
+          sys.unboundFor = 0;
+        }
       }
     }
 
@@ -1269,6 +1352,7 @@ export function advance(
         sys.orbitWrecked = false;
         sys.heatExposure = 0;
         sys.coldExposure = 0;
+        sys.unboundFor = 0;
         sys.syzygyDose = 0;
         events.push({ type: "era", era: "chaotic" });
       }

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 
+import Departure from "@/components/Departure";
 import EraNotice from "@/components/EraNotice";
 import EraProvider from "@/components/EraProvider";
 import Footer from "@/components/Footer";
@@ -100,6 +101,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </main>
           <Footer />
           <EraNotice />
+          <Departure />
         </EraProvider>
       </body>
     </html>

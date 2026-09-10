@@ -21,6 +21,33 @@ import {
 
 const CIVILIZATION_KEY = "trisolaris.civilization";
 const STABILISED_KEY = "trisolaris.stabilised";
+/**
+ * That the fleet has departed, and the civilisation it departed after. Written
+ * when it happens and read exactly once, on the next visit.
+ *
+ * Deliberately not a resumable state. Reaching the ending is cumulative across
+ * visits, but a departed system must not be what a returning visitor lands on:
+ * the hero is the first thing on a portfolio page, and a permanently dead one
+ * is a cost paid on every visit thereafter by someone who never asked. So the
+ * *fact* persists — the ending was earned and is acknowledged on return — and
+ * the system itself comes back.
+ */
+const DEPARTED_KEY = "trisolaris.departed";
+/**
+ * How many civilisations must have come and gone before the simulation losing
+ * Trisolaris means the end rather than a catastrophe lived through.
+ *
+ * Measured, a collapse lands every 35 seconds or so, which puts this about 29
+ * minutes of cumulative watching away — spread over as many visits as someone
+ * likes, since the counter persists. Past it, the simulation reports the
+ * planet unbound about once every 19 minutes.
+ *
+ * The gate lives here rather than in the simulation because the counter does.
+ * `advance` reports what happened to the planet and decides nothing, which is
+ * also what makes this trivially testable: set
+ * `localStorage["trisolaris.civilization"]` to 50 and wait.
+ */
+const DEPARTURE_AT = 50;
 /** Most simulation time a single animation frame may catch up on, in seconds. */
 const MAX_CATCHUP = 0.5;
 /** How long the collapse notice stays on screen. */
@@ -70,6 +97,15 @@ type EraContextValue = {
   noticeVisible: boolean;
   stabilised: boolean;
   setStabilised: (value: boolean) => void;
+  /** The fleet has left and the simulation is stopped. See DEPARTED_KEY. */
+  departed: boolean;
+  /**
+   * Set on a visit that follows a departure, so the page can say so once. The
+   * number is the civilisation the fleet left after.
+   */
+  returnedAfter: number | null;
+  /** Re-form the system from civilisation 1. Also clears the departure. */
+  beginAgain: () => void;
   /** Canvas components register here to be drawn each frame. */
   registerRenderer: (fn: Renderer | null) => void;
 };
@@ -95,10 +131,18 @@ export default function EraProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [noticeVisible, setNoticeVisible] = useState(false);
   const [stabilised, setStabilisedState] = useState(false);
+  const [departed, setDeparted] = useState(false);
+  const [returnedAfter, setReturnedAfter] = useState<number | null>(null);
 
   const systemRef = useRef<System | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const stabilisedRef = useRef(false);
+  // Read inside the frame loop, which must not close over React state.
+  const departedRef = useRef(false);
+  // Published by the frame loop rather than set here, for the same reason the
+  // restored civilisation is: an effect body that calls setState synchronously
+  // cascades a render before the first paint.
+  const returnedAfterRef = useRef<number | null>(null);
   /** See `Renderer`. In a ref, so advancing it costs no React render. */
   const hydrationRef = useRef(1);
 
@@ -117,6 +161,35 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     } catch {
       // Storage can be unavailable; the toggle still works for this session.
     }
+  }, []);
+
+  /**
+   * Re-form the system from civilisation 1.
+   *
+   * The counter resets with it: the ending is the end of a history, and
+   * beginning again starts a new one rather than resuming the old one two
+   * civilisations from its ending. The system is rebuilt rather than nudged,
+   * because every settle in `advance` starts from a running system and there
+   * is nothing here to settle *from* — the last one left.
+   */
+  const beginAgain = useCallback(() => {
+    departedRef.current = false;
+    setDeparted(false);
+    setReturnedAfter(null);
+    setNotice(null);
+    setNoticeVisible(false);
+    const system = createSystem(1);
+    system.pinned = stabilisedRef.current;
+    systemRef.current = system;
+    setCivilization(1);
+    setEra(system.era);
+    try {
+      localStorage.setItem(CIVILIZATION_KEY, "1");
+      localStorage.removeItem(DEPARTED_KEY);
+    } catch {
+      // Nothing to clear if there was nothing to store.
+    }
+    rendererRef.current?.(system, hydrationRef.current);
   }, []);
 
   useEffect(() => {
@@ -139,6 +212,31 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       // No storage: start from civilisation 1, unpinned.
     }
     stabilisedRef.current = pinned;
+
+    // A visit after a departure starts the system over rather than resuming a
+    // dead one, and says so once. Read and cleared in the same breath: the
+    // acknowledgement is for the visit that follows the ending, not for every
+    // visit thereafter.
+    try {
+      const departedAt = Number(localStorage.getItem(DEPARTED_KEY));
+      if (Number.isFinite(departedAt) && departedAt >= 1) {
+        // Published on a microtask rather than synchronously — the lint rule
+        // against cascading renders is right — and deliberately not through
+        // the frame loop like the other synced values. The loop does not run
+        // for a visitor who prefers reduced motion, or one whose tab is
+        // hidden at load, and this is a one-shot message that must survive
+        // both. Measured the hard way: driven in a hidden tab it never
+        // appeared at all.
+        const departedFrom = Math.floor(departedAt);
+        returnedAfterRef.current = departedFrom;
+        queueMicrotask(() => setReturnedAfter(departedFrom));
+        saved = 1;
+        localStorage.removeItem(DEPARTED_KEY);
+        localStorage.setItem(CIVILIZATION_KEY, "1");
+      }
+    } catch {
+      // No storage: there was no departure to come back from either.
+    }
 
     // Applied to the system rather than to React state, so the server and
     // first client render stay identical and the value reaches the UI through
@@ -182,6 +280,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     let lastEra: Era = system.era;
     let lastHeat = -1;
     let lastCivilization = system.civilization;
+    let lastReturnedAfter: number | null = null;
     let lastStabilised = pinned;
 
     const tick = (now: number) => {
@@ -191,7 +290,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       last = now;
       accumulator += delta;
 
-      const frames = Math.floor(accumulator * SIM_HZ);
+      let frames = Math.floor(accumulator * SIM_HZ);
       accumulator -= frames / SIM_HZ;
 
       // Honoured inside the simulation, which re-anchors the suns onto the
@@ -199,6 +298,11 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       // eraElapsed from out here instead only stopped the *clock*: the suns
       // kept drifting, and the worlds went on dying under a Stable Era label.
       system.pinned = stabilisedRef.current;
+
+      // Departed: the system is stopped where it ended. The canvas keeps
+      // drawing it, so the last configuration stays on screen under the
+      // notice rather than the hero going blank.
+      if (departedRef.current) frames = 0;
 
       for (let i = 0; i < frames; i++) {
         for (const event of advance(system, 1)) {
@@ -217,6 +321,21 @@ export default function EraProvider({ children }: { children: ReactNode }) {
             }
             clearTimeout(noticeTimer);
             noticeTimer = setTimeout(() => setNoticeVisible(false), COLLAPSE_NOTICE_MS);
+          } else if (event.type === "lost") {
+            // The planet itself, not a civilisation. Below the gate this is
+            // the worst thing that has ever happened and is lived through;
+            // the simulation carries on and the era resolves as it would
+            // have. Above it, the fleet leaves.
+            if (event.civilization >= DEPARTURE_AT && !departedRef.current) {
+              departedRef.current = true;
+              setDeparted(true);
+              setNoticeVisible(false);
+              try {
+                localStorage.setItem(DEPARTED_KEY, String(event.civilization));
+              } catch {
+                // Without storage the ending is simply not remembered.
+              }
+            }
           } else if (event.type === "survived") {
             setNotice({ kind: "survived", civilization: event.civilization });
             setNoticeVisible(true);
@@ -259,6 +378,10 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       if (system.civilization !== lastCivilization) {
         lastCivilization = system.civilization;
         setCivilization(system.civilization);
+      }
+      if (returnedAfterRef.current !== lastReturnedAfter) {
+        lastReturnedAfter = returnedAfterRef.current;
+        setReturnedAfter(lastReturnedAfter);
       }
       if (stabilisedRef.current !== lastStabilised) {
         lastStabilised = stabilisedRef.current;
@@ -344,6 +467,9 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         noticeVisible,
         stabilised,
         setStabilised,
+        departed,
+        returnedAfter,
+        beginAgain,
         registerRenderer,
       }}
     >
