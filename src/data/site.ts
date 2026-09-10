@@ -28,4 +28,4 @@ export const navLinks = [
 
 /** Every Chinese glyph used on the site, for font subsetting in layout.tsx. */
 export const CJK_GLYPHS =
-  "爱岸案八不存答代档滴冬队沌蛾飞工关寒好恒红胡回毁混纪技架简舰奖教经具框焜历连联烈领码眠灭明目能片日三首水所脱文系箱项校续学严言要业页已英邮于语育元在照珠专字";
+  "爱岸案八不存答代档冬队沌蛾飞工关寒好恒红胡回毁混纪技架简舰奖教经具框焜历连联烈领码眠灭明目能片日三首水所脱文系箱项校续学严言要业页已英邮于语育元在照智珠专子字";

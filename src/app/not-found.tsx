@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import DropletCanvas from "@/components/DropletCanvas";
+import SophonCanvas from "@/components/SophonCanvas";
 
 const NOTHING_HERE = "There is nothing at this address.";
 
@@ -18,18 +18,19 @@ export const metadata = {
 /**
  * The page that isn't there.
  *
- * A droplet, alone, reflecting three suns that are not on screen — because the
- * system it came from is not here either, which is the same thing this page is
- * telling you about the address you asked for.
+ * A sophon, because a 404 is a locked door rather than a disaster. The
+ * Trisolarans did not send a weapon first — they sent two unfolded protons to
+ * sit inside our accelerators and make the results lie, so that every
+ * experiment came back nonsense and physics stopped moving. Not destruction: a
+ * guarantee that you will not find what you are looking for, however many times
+ * you ask.
  *
- * "It came in peace" is what the fleet's own message said, and what the crowds
- * at the gathering believed while the thing they were cheering flew the length
- * of their formation and took it apart. It is the most disarming sentence in
- * the books and it belongs on a page that is telling you, gently, that you have
- * gone somewhere that does not exist.
+ * Which is what this page is. "Something got here first" is true of a sophon
+ * and true of a dead URL, and a visitor who has never read the books still gets
+ * a straight answer on the line below it.
  *
- * The page is server-rendered; only the canvas is a client island, so `/404`
- * stays a static route.
+ * The page is server-rendered; only the canvas is a client island, so
+ * `/_not-found` stays a static route.
  */
 export default function NotFound() {
   return (
@@ -38,20 +39,20 @@ export default function NotFound() {
     // measurement, where overflowing is the point because there is a page
     // underneath; here there is not.
     <div className="flex min-h-[68svh] flex-col items-center justify-center px-6 py-16">
-      {/* Above the words, not behind them. Laid over the copy, the three
-          highlights land on whatever sentence happens to be under them and both
-          the object and the text stop being legible. */}
-      <DropletCanvas className="pointer-events-none h-52 w-52 sm:h-64 sm:w-64" />
+      {/* Above the words rather than behind them: the etched surface is a field
+          of thin lines, and laid under the copy it turns every sentence into
+          something you have to pick out of a grid. */}
+      <SophonCanvas className="pointer-events-none h-52 w-52 sm:h-64 sm:w-64" />
 
       <div className="mt-12 max-w-md text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-faint">
-          <span className="cjk mr-2 normal-case tracking-normal">水滴</span>
+          <span className="cjk mr-2 normal-case tracking-normal">智子</span>
           404
         </p>
 
-        <h1 className="mt-6 text-2xl text-ink">It came in peace.</h1>
+        <h1 className="mt-6 text-2xl text-ink">Something got here first.</h1>
 
-        <p className="mt-3 text-sm text-muted">There is nothing at this address.</p>
+        <p className="mt-3 text-sm text-muted">{NOTHING_HERE}</p>
 
         <Link
           href="/"
