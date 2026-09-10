@@ -84,7 +84,26 @@ export const SIM_HZ = 60;
  * window leaves the violence where it is and asks less of the survivors.
  */
 export const CHAOS_MAX = 12;
-/** How long the suns take to orbit back onto the periodic solution. */
+/**
+ * How long the suns take to orbit back onto the periodic solution.
+ *
+ * No longer the arrival-quality knob it reads as. Under `blendWeight`'s
+ * envelope the gap runs 1, 0.311, 0.068, 0.0078, 0 across s = 0, 1/4, 1/2,
+ * 3/4, 1 — so 93% of the arrival is done by the halfway point and the last
+ * couple of seconds are bodies already sitting on the shadow. Changing this
+ * number barely moves how well the settle arrives.
+ *
+ * What it does move, and what any sweep of it should be judged on:
+ *
+ *   - The first blend frame, which scales as 1/SETTLE_TIME. That is the real
+ *     smoothness lever now: it sets how hard a body is yanked out of chaos,
+ *     and the harness bounds it — halving this doubles it, from 0.151 to 0.311
+ *     against a limit of 0.3, and `the animation never whips` goes red.
+ *   - `worldAlpha`'s fade of an arriving world, which is capped at
+ *     WORLD_FADE_TIME but starts here.
+ *   - `eraElapsed`, which accrues while settling and so eats into the Stable
+ *     Era that follows.
+ */
 export const SETTLE_TIME = 5;
 
 /**
@@ -419,6 +438,24 @@ export type Planet = Body & {
   trail: Point[];
   /** 1 while present, easing to 0 once destroyed. */
   fade: number;
+  /**
+   * True for a world that arrived with this civilisation, so the renderer
+   * fades it in rather than popping it into place. False for one that was
+   * already here.
+   *
+   * Per world, because the settle is not the same event for all of them. A
+   * collapse builds new outer worlds while the old ones fade out as ghosts —
+   * that cross-fade is the point — but it carries Trisolaris across, and a
+   * survival replaces nothing at all. Fading the whole system in over every
+   * settle took the carried home world and every survivor to alpha 0 on the
+   * frame the notice landed, which made the trails this simulation is careful
+   * to preserve invisible for the five seconds they most needed to be seen.
+   *
+   * Cleared when the settle adopts the shadow, whose worlds are built by
+   * `planetsFor` and are not fading in — so a world fades in once, for the
+   * arrival it belongs to, and never again.
+   */
+  fadesIn: boolean;
 };
 
 export type System = {
@@ -533,6 +570,7 @@ function planetsFor(orbit: Orbit): Planet[] {
       alive: true,
       trail: [],
       fade: 1,
+      fadesIn: false,
     };
   });
 }
@@ -666,9 +704,13 @@ function blendToward(body: Body, target: Body, w: number) {
  */
 function blendWeight(before: number, after: number): number {
   const envelope = (s: number) => Math.exp(-4 * s) * (1 - s * s * (3 - 2 * s));
-  const gapBefore = envelope(before);
-  if (gapBefore <= 0) return 1;
-  return 1 - envelope(after) / gapBefore;
+  // No guard on the divisor. The only caller is inside `sys.settle < 1`, and
+  // `envelope(s) > 0` for every s below 1: `settle` is written only by
+  // `beginSettle` and the clamped increment, so `before` is a multiple of
+  // SIM_FRAME_TIME/SETTLE_TIME and the smallest value it can reach here is
+  // envelope(284h) = 5.6e-9. The frame that would divide by zero is the one
+  // with after = 1, which returns 1 through this same expression.
+  return 1 - envelope(after) / envelope(before);
 }
 
 /** One velocity-Verlet step over a bare set of bodies — used by the shadow. */
@@ -1039,6 +1081,13 @@ function resetInto(sys: System, civilization: number, cause: CollapseCause) {
     // are truncated for above; the home world got the copy and not the cut.
     trail: survivingHome.trail.slice(-sys.planetTrailLength),
   });
+  // The new outer worlds fade in against the ghosts of the ones they replace.
+  // Trisolaris does not: it was carried across, it is already on screen, and
+  // fading it out and back in is the cut this whole arrangement exists to
+  // avoid — on the one body the design says the eye is tracking.
+  sys.planets.forEach((p, i) => {
+    p.fadesIn = i > 0;
+  });
   for (let i = 0; i < sys.suns.length; i++) {
     const s = from[i];
     const d = Math.hypot(s.x, s.y);
@@ -1302,10 +1351,16 @@ export function advance(
       //
       // `beginSettle` builds its shadow from `planetsFor(sys.orbit)` on the
       // very next line, and now that the blend arrives rather than merely
-      // approaching — see `blendWeight` — the worlds *converge* onto that same
-      // validated state instead of being placed on it. The destination is
-      // identical, which is why nothing downstream moved; what changed is that
-      // they travel there. Placed instead, a world crossed up to 11.531 world
+      // approaching — see `blendWeight` — the worlds *converge* onto it
+      // instead of being placed on it.
+      //
+      // Not onto the canonical starting angles, though: the shadow integrates
+      // every settling frame, so what they arrive at is the periodic solution
+      // advanced by SETTLE_TIME. That is the validated state either way —
+      // every phase of a periodic solution is on it — and it is exactly what
+      // the old code adopted at the end of the settle too, which is why the
+      // destination is identical and nothing downstream moved. What changed is
+      // that they travel there. Placed instead, a world crossed up to 11.531 world
       // units between two frames, further than the width of the frame it is
       // drawn in, on all 42 survivals of a 75-minute run.
       //
