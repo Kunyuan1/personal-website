@@ -20,9 +20,22 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * The declaration itself is not a use.
+ *
+ * `CJK_GLYPHS` lives in `src/data/site.ts`, which this walk reads like any
+ * other file — so every declared glyph was landing in `used` by virtue of being
+ * declared, and the unused warning below could never fire. It was dead from the
+ * day it was written. Stripping the literal before counting gives it back its
+ * job: dropping a phrase from the site now leaves its glyphs visibly orphaned
+ * in the font subset instead of silently padding it.
+ */
+const DECLARATION = /export const CJK_GLYPHS =\s*"[^"]*"/;
+
 const used = new Set();
 for (const file of walk("src")) {
-  for (const char of readFileSync(file, "utf8").match(CJK) ?? []) used.add(char);
+  const text = readFileSync(file, "utf8").replace(DECLARATION, "");
+  for (const char of text.match(CJK) ?? []) used.add(char);
 }
 
 const source = readFileSync("src/data/site.ts", "utf8");
