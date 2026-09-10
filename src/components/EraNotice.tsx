@@ -45,16 +45,20 @@ const FATES: Record<CollapseCause, { cjk: string; text: string }> = {
  * overshoots its unit — 90 minutes before hours, 36 hours before days — so
  * nothing is ever announced as "1 hour" for 61 minutes, or "1 day" for someone
  * who stepped out after lunch.
+ *
+ * Every threshold reads `ms`, never the rounded value it is about to print,
+ * and every branch handles the singular. Rounding first let the two disagree:
+ * at 89 minutes 42 seconds `Math.round` gave 90 minutes, which failed the
+ * `< 90` test, and the hour branch then printed "1 hours" — the exact output
+ * the overshoot above was written to make impossible.
  */
 function formatAway(ms: number): string {
-  const minutes = Math.round(ms / 60000);
-  if (minutes < 90) return `${minutes} minutes`;
-  const hours = Math.round(ms / 3600000);
-  if (hours < 36) return `${hours} hours`;
-  const days = Math.round(ms / 86400000);
-  if (days < 60) return `${days} ${days === 1 ? "day" : "days"}`;
-  const months = Math.round(days / 30.44);
-  return `${months} ${months === 1 ? "month" : "months"}`;
+  const plural = (value: number, unit: string) =>
+    `${value.toLocaleString("en-US")} ${value === 1 ? unit : `${unit}s`}`;
+  if (ms < 90 * 60000) return plural(Math.round(ms / 60000), "minute");
+  if (ms < 36 * 3600000) return plural(Math.round(ms / 3600000), "hour");
+  if (ms < 60 * 86400000) return plural(Math.round(ms / 86400000), "day");
+  return plural(Math.round(ms / 86400000 / 30.44), "month");
 }
 
 /**
