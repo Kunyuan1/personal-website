@@ -1,5 +1,7 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+
 import {
   createContext,
   useCallback,
@@ -49,6 +51,19 @@ const LAST_SEEN_KEY = "trisolaris.lastSeen";
  * what they missed, and they should not fire together on a lunch break.
  */
 const HIBERNATION_MIN_MS = 30 * 60 * 1000;
+/**
+ * How often presence is recorded while someone is actually looking.
+ *
+ * A tab that is closed cleanly fires `pagehide`, and one that is hidden fires
+ * `visibilitychange` — but a tab that crashes, is force-quit, or is discarded
+ * under memory pressure fires neither, and the whole session then counts as
+ * time away. A minute of that is invisible against a thirty-minute threshold;
+ * an hour of reading is not.
+ *
+ * Only while visible. Beating in a hidden tab would quietly erase the very
+ * absence this is here to measure.
+ */
+const PRESENCE_BEAT_MS = 60000;
 /** The hibernation notice is three sentences, and needs longer than a death. */
 const HIBERNATION_NOTICE_MS = 11000;
 /**
@@ -180,12 +195,30 @@ export default function EraProvider({ children }: { children: ReactNode }) {
   const [stabilised, setStabilisedState] = useState(false);
   const [departed, setDeparted] = useState(false);
   const [returnedAfter, setReturnedAfter] = useState<number | null>(null);
+  const pathname = usePathname();
 
   const systemRef = useRef<System | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const stabilisedRef = useRef(false);
   // Read inside the frame loop, which must not close over React state.
   const departedRef = useRef(false);
+  /**
+   * The auto-hide for whichever notice is on screen. In a ref because two
+   * effects arm it now — the frame loop for an era's outcome, and the
+   * hibernation publish below — and a notice replacing another has to be able
+   * to cancel the timer that would otherwise blank it part-way through.
+   */
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /**
+   * The gap this visitor was away, held until there is somewhere to show it.
+   *
+   * Read once at load, because the act of loading records a new visit and
+   * destroys it. Published only when the visitor is on `/`, since that is the
+   * only route EraNotice renders on: landing on /projects through a bookmark
+   * used to consume the gap into a notice nobody could see, and the message
+   * was gone for good.
+   */
+  const pendingHibernationRef = useRef<{ awayMs: number; civilizations: number } | null>(null);
   /** See `Renderer`. In a ref, so advancing it costs no React render. */
   const hydrationRef = useRef(1);
 
@@ -235,6 +268,51 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     rendererRef.current?.(system, hydrationRef.current);
   }, []);
 
+  /**
+   * Record that this visitor was here, in its own effect.
+   *
+   * Deliberately not inside the simulation effect, which returns early under
+   * reduced motion — before any of this was registered and without a cleanup.
+   * A reduced-motion visitor therefore wrote `lastSeen` exactly once, on load,
+   * and every later visit measured its absence from the *start of the previous
+   * session*: forty minutes of reading and a five-minute break was announced
+   * as a forty-five minute hibernation. Whether someone was here has nothing
+   * to do with whether the suns are moving, and it no longer shares a lifetime
+   * with them.
+   */
+  useEffect(() => {
+    const remember = () => {
+      try {
+        localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
+      } catch {
+        // Nothing to remember with.
+      }
+    };
+    let beat: ReturnType<typeof setInterval> | undefined;
+    const stopBeat = () => {
+      clearInterval(beat);
+      beat = undefined;
+    };
+    const startBeat = () => {
+      stopBeat();
+      beat = setInterval(remember, PRESENCE_BEAT_MS);
+    };
+    const onPresence = () => {
+      remember();
+      if (document.hidden) stopBeat();
+      else startBeat();
+    };
+    if (!document.hidden) startBeat();
+    document.addEventListener("visibilitychange", onPresence);
+    window.addEventListener("pagehide", remember);
+    return () => {
+      stopBeat();
+      document.removeEventListener("visibilitychange", onPresence);
+      window.removeEventListener("pagehide", remember);
+      remember();
+    };
+  }, []);
+
   useEffect(() => {
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
@@ -248,7 +326,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     let saved = 1;
     let pinned = false;
     let skipHibernation = false;
-    let hibernationTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       const raw = Number(localStorage.getItem(CIVILIZATION_KEY));
       if (Number.isFinite(raw) && raw >= 1) saved = Math.floor(raw);
@@ -297,13 +374,16 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       const lastSeen = Number(localStorage.getItem(LAST_SEEN_KEY));
       localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
       const awayMs = Number.isFinite(lastSeen) && lastSeen > 0 ? Date.now() - lastSeen : 0;
-      if (!skipHibernation && awayMs >= HIBERNATION_MIN_MS) {
+      // Not while the era shifts are switched off. `pinned` is this visitor
+      // saying they want the Chaotic Eras to stop, and the simulation obeys:
+      // it re-seeds a Stable Era for as long as the toggle is held and never
+      // enters a Chaotic one, so no civilisation can fall. Telling them that
+      // 26,928 of them did is not the same contradiction as the counter being
+      // smaller than the estimate — it describes events their own persisted
+      // setting guarantees did not happen.
+      if (!skipHibernation && !pinned && awayMs >= HIBERNATION_MIN_MS) {
         const civilizations = Math.round((awayMs / 3600000) * CIVILIZATIONS_PER_HOUR);
-        queueMicrotask(() => {
-          setNotice({ kind: "hibernation", awayMs, civilizations });
-          setNoticeVisible(true);
-          hibernationTimer = setTimeout(() => setNoticeVisible(false), HIBERNATION_NOTICE_MS);
-        });
+        pendingHibernationRef.current = { awayMs, civilizations };
       }
     } catch {
       // No storage: no gap to measure, and nothing to say about it.
@@ -338,7 +418,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     let last = performance.now();
     let accumulator = 0;
     let running = true;
-    let noticeTimer: ReturnType<typeof setTimeout> | undefined;
     // When the running rehydration began, or 0 if none is. Wall-clock, because
     // this is an animation the visitor watches rather than anything the
     // simulation measures — and because no simulation time passes while the
@@ -413,8 +492,8 @@ export default function EraProvider({ children }: { children: ReactNode }) {
             } catch {
               // Non-persistent visitors simply restart at 1 next time.
             }
-            clearTimeout(noticeTimer);
-            noticeTimer = setTimeout(() => setNoticeVisible(false), COLLAPSE_NOTICE_MS);
+            clearTimeout(noticeTimerRef.current);
+            noticeTimerRef.current = setTimeout(() => setNoticeVisible(false), COLLAPSE_NOTICE_MS);
           } else if (event.type === "lost") {
             // The planet itself, not a civilisation. Below the gate this is
             // the worst thing that has ever happened and is lived through;
@@ -434,8 +513,8 @@ export default function EraProvider({ children }: { children: ReactNode }) {
           } else if (event.type === "survived") {
             setNotice({ kind: "survived", civilization: event.civilization });
             setNoticeVisible(true);
-            clearTimeout(noticeTimer);
-            noticeTimer = setTimeout(() => setNoticeVisible(false), SURVIVAL_NOTICE_MS);
+            clearTimeout(noticeTimerRef.current);
+            noticeTimerRef.current = setTimeout(() => setNoticeVisible(false), SURVIVAL_NOTICE_MS);
           }
         }
       }
@@ -493,7 +572,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         running = false;
         cancelAnimationFrame(frame);
         hiddenAt = performance.now();
-        rememberVisit();
         return;
       }
 
@@ -520,29 +598,38 @@ export default function EraProvider({ children }: { children: ReactNode }) {
 
       frame = requestAnimationFrame(tick);
     };
-    // `pagehide` as well as visibility, because a tab that is closed outright
-    // never goes hidden first, and `beforeunload` is not delivered reliably on
-    // mobile. Between them the last visit is recorded however the page ends.
-    const rememberVisit = () => {
-      try {
-        localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
-      } catch {
-        // Nothing to remember with.
-      }
-    };
     document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", rememberVisit);
 
     return () => {
       running = false;
       cancelAnimationFrame(frame);
-      clearTimeout(noticeTimer);
-      clearTimeout(hibernationTimer);
+      clearTimeout(noticeTimerRef.current);
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", rememberVisit);
-      rememberVisit();
     };
   }, []);
+
+  /**
+   * Show the hibernation gap once the visitor is on the route that can render
+   * it. Runs on mount as well as on navigation, so someone who lands on `/`
+   * sees it immediately and someone who arrives at /about sees it when they
+   * get home.
+   *
+   * On a microtask, like every other one-shot here: this must reach a visitor
+   * who prefers reduced motion and one whose tab is hidden at load, and
+   * neither of them gets an animation frame.
+   */
+  useEffect(() => {
+    if (pathname !== "/") return;
+    const pending = pendingHibernationRef.current;
+    if (!pending) return;
+    pendingHibernationRef.current = null;
+    queueMicrotask(() => {
+      setNotice({ kind: "hibernation", ...pending });
+      setNoticeVisible(true);
+      clearTimeout(noticeTimerRef.current);
+      noticeTimerRef.current = setTimeout(() => setNoticeVisible(false), HIBERNATION_NOTICE_MS);
+    });
+  }, [pathname]);
 
   // Exposed for anything that wants the discrete state. The palette does not
   // use it — colour is driven continuously by --heat instead.

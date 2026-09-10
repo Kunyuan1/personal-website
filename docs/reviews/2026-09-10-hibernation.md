@@ -50,8 +50,15 @@ visitor. An hour is long enough for the tail to average out.
 ## What was built
 
 `trisolaris.lastSeen` is written whenever the page goes away — `visibilitychange`
-when it hides, `pagehide` when it is closed outright, and the effect cleanup —
-and read once on the way back. Under 30 minutes says nothing. Over, a third
+when it hides, `pagehide` when it is closed outright, the effect cleanup, and a
+sixty-second beat while the tab is visible — and read once on the way back.
+
+All of that lives in **its own effect**, which is the correction from the review
+below: the first version registered it inside the simulation effect, which
+returns early under reduced motion, so a reduced-motion visitor recorded
+nothing after their first load.
+
+Under 30 minutes says nothing. Over, a third
 `Notice` kind renders through `EraNotice`, in neither of the two outcome
 colours, because a hibernation is the one notice here that is not reporting
 something the animation just did.
@@ -113,8 +120,10 @@ Each duration driven this way, and the copy read at each:
 - [x] 43/43 invariants, exit 0, the new one planted against
 - [x] Mortality, causes, motion bounds and the departure rate all unmoved
 - [x] Departure suppresses hibernation, driven with both armed
-- [x] Announced in a **background tab**, which is the reduced-motion and
-      hidden-at-load case the microtask exists for
+- [x] Announced in a **background tab**, which is the hidden-at-load case the
+      microtask publish exists for. Note this covers reduced motion for
+      *publishing* only — recording is a separate path, and the review below
+      is where that distinction turned out to matter
 - [x] `tsc --noEmit`, `eslint .`, `check:glyphs` (95 glyphs, 冬眠 added),
       `next build`
 
@@ -142,3 +151,109 @@ exists while someone is looking at it.
 It is written down here rather than left to be discovered because this codebase
 has twice deleted things for a notice contradicting what was beside it — and
 this one is a contradiction that was chosen, not missed.
+
+---
+
+# Review findings — 2026-09-10
+
+Six findings, all fixed. The measurement half of this change came through
+clean; every finding was on the other half — how the gap is *recorded*, and who
+is told about it.
+
+## 1. Reduced motion never recorded a visit — fixed
+
+The simulation effect returns early under `prefers-reduced-motion: reduce`,
+before the listeners were registered and without a cleanup. So on that path
+`lastSeen` was written exactly once, at load, and every later visit measured
+its absence from the **start of the previous session**. Forty minutes of
+reading and a five-minute break announced a forty-five minute hibernation; an
+hour of reading and a coffee announced two hours.
+
+The review is right that the verification made this easy to miss: the PR
+reasoned about reduced motion and got the *publish* half right — `queueMicrotask`
+rather than `tick` — and proved it in a background tab. But a background tab is
+not the reduced-motion path, and publishing is not recording.
+
+**Resolution.** Presence recording is its own effect. Whether someone was here
+has nothing to do with whether the suns are moving, and it no longer shares a
+lifetime with them. Driven with the reduced-motion branch forced on: loaded,
+left after nine seconds, and the stored value moved by nine seconds — where the
+old code recorded zero.
+
+A sixty-second beat while the tab is visible was added with it, for the case
+the review flagged as the same shape but narrower: a tab that crashes, is
+force-quit, or is discarded under memory pressure fires neither `pagehide` nor
+`visibilitychange`, and the whole session used to count as time away. The beat
+stops while hidden — beating in a hidden tab would erase the absence it exists
+to measure.
+
+## 2. The notice was consumed on every route and rendered on one — fixed
+
+`EraProvider` is in the root layout, so the gap was read, `lastSeen` overwritten
+and the notice armed on every entry; `EraNotice` renders only on `/`. A visitor
+returning after eleven days through a bookmark to `/projects` saw nothing, and
+eleven seconds later the message was gone for good — the next visit measured
+from that one.
+
+**Resolution.** The gap is held in a ref and published when the visitor is
+somewhere it can be seen. Driven: nothing on `/projects`, and the message
+appears on navigating home. The sibling one-shot does not have this problem
+because `Footer` is in the layout — which is exactly the asymmetry the review
+used to find it.
+
+## 3. The estimate ignored a pinned Stable Era — fixed
+
+A visitor holding the era toggle has `STABILISED_KEY` persisted, and `advance`
+re-seeds a Stable Era for as long as it is held: zero collapses, by
+construction, permanently, by their own choice. They were still told 26,928
+civilisations rose and fell.
+
+The review draws the right distinction. The `文明 #1` contradiction this PR
+accepted is a number larger than the counter beside it. This one describes
+events the visitor's own setting guarantees did not happen, and the pin is the
+one control on the page that says *make this stop*.
+
+**Resolution.** No hibernation notice while pinned. Driven with the toggle
+persisted: silent, and the footer reads `Allow Chaotic Eras`.
+
+## 4. `formatAway` could emit "1 hours" — fixed
+
+`minutes` and `hours` were each rounded independently from `ms`, so the `< 90`
+guard and the printed hour value could disagree: at 89 minutes 42 seconds
+`Math.round` gave 90 minutes, the guard failed, and the hour branch printed "1
+hours" — the exact output the overshoot thresholds were written to prevent.
+
+**Resolution.** Every threshold reads `ms` rather than a rounded value, and one
+helper handles the singular for all four units. Checked at each boundary:
+
+```
+89m42s -> 90 minutes     90 min -> 2 hours      35.6 h -> 36 hours
+36 h   -> 2 days         59.6 d -> 60 days      60 d   -> 2 months
+```
+
+## 5. The hibernation timer escaped cleanup and the notice mutex — fixed
+
+It was assigned inside a `queueMicrotask` callback while the cleanup read the
+variable synchronously, so in StrictMode it was never cleared; and the collapse
+and survival handlers only cleared *their* timer, so an orphan could blank
+whatever notice was on screen when it fired. Unreachable today only because the
+shortest `stableDuration` is longer than the notice window — which is accident,
+not design.
+
+**Resolution.** One `noticeTimerRef` for every notice, cleared before each is
+armed and in both cleanups.
+
+## 6. The write-coverage claim in this document was not true — fixed
+
+It said `lastSeen` was written by three handlers, none of which was registered
+under reduced motion, and the checklist presented the background-tab drive as
+covering reduced motion. It covered it for publishing, not for recording, and
+that distinction is where finding 1 lived. Both corrected above.
+
+## Left alone, deliberately
+
+`CIVILIZATIONS_PER_HOUR` is measured on an unpinned system that runs past
+`DEPARTURE_AT`, while the page stops at 25. The review notes it and would leave
+it; so would I. It is an estimate about a simulation that was paused the whole
+time, and making the rig model the page's own stopping conditions would be
+precision the number cannot carry.
