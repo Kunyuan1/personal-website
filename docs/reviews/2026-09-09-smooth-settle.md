@@ -180,7 +180,137 @@ left out rather than added for the look of it.
 
 ## Open
 
-**`SETTLE_TIME` may want re-sweeping.** It was chosen at 5 against a blend that
-never arrived, so it was partly tuned against the lag itself. Per `prompts.md`,
-that is a sweep over the real decision path, not a nudge — and it is not this
-change's to make, since every downstream number here is unmoved.
+**`SETTLE_TIME` may want re-sweeping, but not for arrival quality.** It was
+chosen at 5 against a blend that never arrived, so it was partly tuned against
+the lag itself — but under the envelope 93% of the arrival is done by the
+halfway point, and the constant no longer controls how well the settle lands.
+
+What a sweep of it actually moves is the first blend frame, which scales as
+`1/SETTLE_TIME` and is the real smoothness lever now — halving the constant
+takes it from 0.151 to 0.311 and `the animation never whips` goes red — along
+with the arrival fade and the settling time charged to `eraElapsed`. Worth
+naming which of those a sweep is for, or it gets run against arrival quality
+and reads noise. Per `prompts.md` that is a sweep over the real decision path,
+not a nudge.
+
+---
+
+# Review findings — 2026-09-09
+
+Seven findings against this branch, all fixed. The review verified the blend
+algebra independently and derived the bound rather than taking the measured
+one: a surviving world sits inside `escapeRadiusFor` = 7.92 and its shadow
+inside 6.0, so the worst possible first-blend-frame step is
+`0.0140 x 13.92 = 0.195` — the headroom under the limit is structural, not
+luck.
+
+## 1. Every world blinked to invisible on the frame the notice landed — fixed
+
+**Where:** `src/components/SystemCanvas.tsx`
+
+```ts
+const worldAlpha = system.settle * hydration;
+```
+
+`beginSettle` sets `settle = 0`, so on the first frame of every settle *every
+living world and its trail* were drawn at alpha 0 and ramped back over five
+seconds. Two bodies never deserved that: Trisolaris, which `resetInto`
+deliberately carries across instead of ghosting, and every world of a
+civilisation that survived, where nothing is replaced at all.
+
+So the trails this branch went to the trouble of preserving were invisible for
+exactly the moment they exist to cover, and the on-screen symptom the new
+comment claimed to have fixed — *"the one continuous thing on screen vanished
+at the moment the visitor was being told the civilisation had come through"* —
+was unchanged. Pre-existing, and in scope precisely because this is the branch
+that adds an invariant called *the animation never cuts* and reported it green
+over 208 settles that all did this.
+
+**It also inverts the severity ranking in the write-up above.** The 11.531-unit
+survival teleport happened on the frame `worldAlpha` went to 0, so it was
+masked. The cut a visitor actually saw at full opacity was the 1.286 adoption
+jump, where `settle` is 1. The fixes are unchanged; the ordering was wrong.
+
+**Resolution.** `fadesIn` on the world itself, set by `resetInto` for the new
+outer worlds and cleared by the adoption, so a world fades in once for the
+arrival it belongs to. The fade runs over `WORLD_FADE_TIME` rather than the
+whole settle, making it the mirror of the ghost fade it plays against — a world
+at 0.3 replaces a ghost at 0.7 instead of the pair dipping through the middle
+of the cross-fade. New invariant `no world fades in that was already here`,
+planted: `FAIL 124`.
+
+## 2. The step bound was C0 only — fixed
+
+`worstStep` said no body jumps and said nothing about one going from crawling
+to sprinting. The envelope's slope at `s = 0` is -4 by design (the anti-freeze
+property), so the first blend frame closes 1.4% of whatever gap it starts with:
+a world 8 units from its shadow goes from ~0.016 units per frame to ~0.16.
+
+Not a regression — the same probe against the previous commit gives **11.53**,
+so this branch improves C1 by 76x. The gap was the *bound*: halving the arrival
+time doubles this and would have shipped green.
+
+**Resolution.** `the animation never whips`, on the frame-to-frame change in a
+body's step, same 0.3 limit. Worst is 0.151. Planted by halving `SETTLE_TIME`:
+
+```
+FAIL  the animation never cuts    worst 0.322 (world 3, settling)   exit 1
+FAIL  the animation never whips   worst 0.311 (world 3, settling)   exit 1
+```
+
+Bounded rather than removed, deliberately: easing the weight in from zero
+smooths it and freezes the bodies at the start of every settle, since during a
+settle the blend is the only thing moving them.
+
+## 3. The pinned re-anchor was never instrumented — fixed
+
+Holding the Stable Era open re-anchors through the same `beginSettle` every
+`stableDuration`, from worlds that have wandered to 1.85x their radius — a
+settle from a *larger* starting gap than the seeded run produces, for as long
+as a visitor holds the toggle. The new instrumentation lived only in the seeded
+loop.
+
+**Resolution.** `motionWatch` is a helper all three rigs call.
+
+**And it caught a second bug in the fix.** With the rigs wired up the row still
+read `worst 0` with the seeded watcher disabled: `record` reads its value at the
+moment it runs, and the rows sat beside the long run, which executes *before*
+both pinned rigs. They contributed nothing while the row implied they had —
+the same shape as the finding itself. The motion rows now sit after every rig.
+Verified by disabling the seeded watcher: `worst 0.154 (world 3, settling,
+pinned moth)`, matching the review's own 0.1538.
+
+## 4. `SETTLE_TIME` is not the knob the Open item thought — fixed
+
+Under the envelope the gap runs 1, 0.311, 0.068, 0.0078, 0 across
+`s = 0, 1/4, 1/2, 3/4, 1`, so 93% of the arrival is done by halfway and the
+last two seconds are bodies already sitting on the shadow. Sweeping it moves
+the first-frame step (as `1/SETTLE_TIME` — the real smoothness lever), the
+arrival fade, and `eraElapsed`, not arrival quality. Written next to the
+constant, and the Open item below is rewritten.
+
+## 5. The trail invariant only caught a total wipe — fixed
+
+`was.trail > 30 && p.trail.length <= 1` would have passed a regression that
+halved a living world's trail, and the two constants were the only unexplained
+numbers in the block. Now a living world's trail may lose at most one point per
+frame, the rate `recordTrails` removes them at, with a documented exception for
+the collapse frame where `resetInto` truncates the carried home trail to the
+new orbit's limit. Planted: `FAIL 168 (worst 691 points)`.
+
+## 6. An unreachable guard — fixed
+
+`if (gapBefore <= 0) return 1;` cannot fire: the only caller is inside
+`sys.settle < 1` and `envelope(s) > 0` for every `s < 1`, the smallest
+reachable value being `envelope(284h) = 5.6e-9`. Dropped, with the reason
+written where it stood.
+
+## 7. "That same validated state" was not `planetsFor`'s — fixed
+
+The shadow integrates every settling frame, so what the worlds converge onto is
+the periodic solution advanced by `SETTLE_TIME`, not the canonical starting
+angles. The conclusion holds — every phase of a periodic solution is validated,
+and the old code adopted the same advanced shadow, which is why the destination
+is identical — but a reader checking the claim against the deleted comment
+would have found the worlds nowhere near those angles. Clause added, since the
+ordering argument depends on it.

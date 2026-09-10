@@ -27,6 +27,8 @@ import {
   frameRadiusFor,
   type CollapseCause,
   type Planet,
+  type SimEvent,
+  type System,
 } from "../src/lib/trisolaris.ts";
 
 const SEEDS = [99, 7, 2024, 5, 31415];
@@ -214,6 +216,145 @@ let worstStepWhat = "nothing moved";
  * world with a new one.
  */
 let trailsWiped = 0;
+let worstTrailShrink = 0;
+/**
+ * The worst frame-to-frame *change* in a body's step, and where it happened.
+ *
+ * `worstStep` is a C0 bound: it says no body jumps. It says nothing about a
+ * body that goes from crawling to sprinting between two frames, which reads as
+ * a whip rather than a cut but is just as much a discontinuity. The settle is
+ * where this lives: the blend's first frame closes 1 - exp(-4h) = 1.4% of
+ * whatever gap it starts with, so a world left 8 units from its shadow goes
+ * from about 0.016 units per frame to 0.16 in one step.
+ *
+ * Bounded rather than removed, deliberately. Easing the weight in from zero
+ * would smooth it and freeze the bodies at the start of every settle, since
+ * during a settle the blend is the only thing moving them at all — see
+ * `blendWeight`. What the bound is for is the next change: halving the arrival
+ * time doubles this number, and without a row watching it that ships green.
+ */
+// Worlds the renderer would fade in that were already on screen, or new ones
+// it would pop into place. See motionWatch.
+let fadeInWrong = 0;
+let worstJerk = 0;
+let worstJerkWhat = "nothing moved";
+
+/**
+ * Watches one system's bodies for discontinuities, frame by frame.
+ *
+ * A helper rather than inline code because the seeded run is not the only
+ * place a settle happens. Holding the Stable Era open re-anchors the system
+ * every `stableDuration` through the same `beginSettle` the eras use, from
+ * worlds that have wandered — measured, up to 1.85x their radius — so it is a
+ * settle from a *further* starting gap than anything the seeded loop produces,
+ * running for as long as a visitor holds the toggle. It had no instrumentation
+ * at all: worst step 0.119 and 0.154 on the two solutions, over half the
+ * bound, asserted by nothing.
+ *
+ * Call `frame` after each `advance`; the watcher keeps its own copy of the
+ * previous frame and needs nothing captured beforehand.
+ */
+function motionWatch(sys: System, where: string) {
+  let prevSuns = sys.suns.map((s) => ({ x: s.x, y: s.y }));
+  let prevPlanets = sys.planets.map((p) => ({
+    x: p.x,
+    y: p.y,
+    alive: p.alive,
+    trail: p.trail.length,
+  }));
+  let prevSettle = sys.settle;
+  // Last frame's step per body, for the C1 bound. Keyed by role and index,
+  // which is what identity means here.
+  const lastStep = new Map<string, number>();
+
+  return {
+    frame(events: SimEvent[]) {
+      const collapseHere = events.find((e) => e.type === "collapse");
+      const survivedHere = events.some((e) => e.type === "survived");
+      const what = survivedHere
+        ? "survival"
+        : collapseHere
+          ? `collapse (${collapseHere.cause})`
+          : prevSettle < 1 && sys.settle >= 1
+            ? "settle ends, shadow adopted"
+            : prevSettle < 1
+              ? "settling"
+              : "ordinary play";
+
+      const step = (moved: number, who: string, comparable: boolean) => {
+        if (moved > worstStep) {
+          worstStep = moved;
+          worstStepWhat = `${who}, ${what}${where}`;
+        }
+        const previous = lastStep.get(who);
+        if (comparable && previous !== undefined) {
+          const jerk = Math.abs(moved - previous);
+          if (jerk > worstJerk) {
+            worstJerk = jerk;
+            worstJerkWhat = `${who}, ${what}${where}`;
+          }
+        }
+        lastStep.set(who, moved);
+      };
+
+      // Who the renderer will fade in. `fadesIn` is simulation state, so this
+      // is the one part of the opacity bug the harness can hold: the cut it
+      // caused was a body already on screen being faded from nothing.
+      //
+      // A collapse builds new outer worlds against the ghosts of the old ones,
+      // so those fade in; Trisolaris is carried across and must not. A
+      // survival replaces nothing, so nothing may fade in — that path took
+      // every surviving world to alpha 0 in the frame its own notice landed.
+      if (collapseHere) {
+        if (sys.planets[0].fadesIn) fadeInWrong++;
+        for (let i = 1; i < sys.planets.length; i++) {
+          if (sys.planets[i].alive && !sys.planets[i].fadesIn) fadeInWrong++;
+        }
+      } else if (survivedHere) {
+        for (const p of sys.planets) if (p.alive && p.fadesIn) fadeInWrong++;
+      }
+
+      sys.suns.forEach((s, i) => {
+        step(Math.hypot(s.x - prevSuns[i].x, s.y - prevSuns[i].y), `sun ${i}`, true);
+      });
+      sys.planets.forEach((p, i) => {
+        // The home world is carried across a collapse; the outer worlds are
+        // rebuilt, so on that one frame index `i` is a different world and
+        // neither its step nor the change in its step means anything.
+        if (i > 0 && collapseHere) {
+          lastStep.delete(`world ${i}`);
+          return;
+        }
+        const was = prevPlanets[i];
+        if (!was || !was.alive || !p.alive) return;
+        const who = p.isHome ? "home" : `world ${i}`;
+        step(Math.hypot(p.x - was.x, p.y - was.y), who, true);
+        // A trail may lose one point a frame to `recordTrails` and no more.
+        // The exception is a collapse, where `resetInto` truncates the carried
+        // home trail to the new orbit's limit — 691 points to 364 on a moth to
+        // figure-eight switch, which is deliberate and documented there.
+        //
+        // Written as a bound on the shrink rather than as "went from something
+        // to nothing", which was the first version and would have passed a
+        // regression that halved a living world's trail for no reason.
+        const shrink = was.trail - p.trail.length;
+        if (!collapseHere && shrink > 1) {
+          worstTrailShrink = Math.max(worstTrailShrink, shrink);
+          trailsWiped++;
+        }
+      });
+
+      prevSuns = sys.suns.map((s) => ({ x: s.x, y: s.y }));
+      prevPlanets = sys.planets.map((p) => ({
+        x: p.x,
+        y: p.y,
+        alive: p.alive,
+        trail: p.trail.length,
+      }));
+      prevSettle = sys.settle;
+    },
+  };
+}
 
 for (const seed of [...SEEDS]) {
   const sys = createSystem();
@@ -233,6 +374,8 @@ for (const seed of [...SEEDS]) {
   const seenGhosts = new WeakSet<Planet>();
 
   const prevSunPositions = sys.suns.map((s) => ({ x: s.x, y: s.y }));
+
+  const watch = motionWatch(sys, "");
 
   // This era's worst so far, kept until the era resolves and only then charged
   // to the outcome it resolved into.
@@ -265,17 +408,6 @@ for (const seed of [...SEEDS]) {
     const wreckedBefore = sys.orbitWrecked;
     const homeBaseBefore = sys.planets[0].home;
     const chaoticBefore = sys.era === "chaotic";
-    // Positions before the frame, for the discontinuity check below. Taken
-    // here rather than reusing `prevSunPositions`, which is a frame behind by
-    // the time the crossing measure has finished with it.
-    const settleBefore = sys.settle;
-    const beforeSuns = sys.suns.map((s) => ({ x: s.x, y: s.y }));
-    const beforePlanets = sys.planets.map((p) => ({
-      x: p.x,
-      y: p.y,
-      alive: p.alive,
-      trail: p.trail.length,
-    }));
     const events = advance(sys, 1, rand);
     // After the frame as well as before it. A collapse carries the home world
     // across at exactly the position it died at, so this is the only reading
@@ -289,41 +421,7 @@ for (const seed of [...SEEDS]) {
     }
     simTime += SIM_FRAME_TIME;
 
-    // What moved, and how far. Attributed to this frame's own events: a
-    // collapse and the settle that follows it are different frames doing
-    // different things, and a cut is only diagnosable if the row says which.
-    {
-      const collapseHere = events.find((e) => e.type === "collapse");
-      const survivedHere = events.some((e) => e.type === "survived");
-      const what = survivedHere
-        ? "survival re-seed"
-        : collapseHere
-          ? `collapse (${collapseHere.cause})`
-          : settleBefore < 1 && sys.settle >= 1
-            ? "settle ends, shadow adopted"
-            : settleBefore < 1
-              ? "settling"
-              : "ordinary play";
-      const step = (moved: number, who: string) => {
-        if (moved <= worstStep) return;
-        worstStep = moved;
-        worstStepWhat = `${who}, ${what}`;
-      };
-      sys.suns.forEach((s, i) => {
-        step(Math.hypot(s.x - beforeSuns[i].x, s.y - beforeSuns[i].y), "sun");
-      });
-      sys.planets.forEach((p, i) => {
-        // The home world is carried across a collapse; the outer worlds are
-        // rebuilt, so on that one frame index `i` is a different world.
-        if (i > 0 && collapseHere) return;
-        const was = beforePlanets[i];
-        if (!was || !was.alive || !p.alive) return;
-        step(Math.hypot(p.x - was.x, p.y - was.y), p.isHome ? "home" : `world ${i}`);
-        // A trail that had something to draw and now has nothing, under a
-        // world that is still alive.
-        if (was.trail > 30 && p.trail.length <= 1) trailsWiped++;
-      });
-    }
+    watch.frame(events);
 
     let newGhosts = 0;
     let newHomeGhosts = 0;
@@ -549,16 +647,6 @@ record(
   toSeconds(maxDelay) < 2,
 );
 record("mortality", `${mortality}%`, "40-80%", mortality >= 40 && mortality <= 80);
-// The simulation is watched, so a body that jumps is a defect however correct
-// the state it jumps to. Every other invariant here reads the state; this one
-// reads the motion, which is why two teleports could ship under a green run.
-record(
-  "the animation never cuts",
-  `worst ${round(worstStep)} (${worstStepWhat})`,
-  `< ${STEP_LIMIT} units`,
-  worstStep < STEP_LIMIT,
-);
-record("no trail is wiped from a living world", trailsWiped, "0", trailsWiped === 0);
 // What "survived" has to mean on screen. Before survival was judged over the
 // whole era rather than at its last frame, the worst survivor peaked at 1.717x
 // its own radius — 1.24x the frame — and survivors spent 20 eras' worth of
@@ -643,8 +731,12 @@ let pinnedNonStable = 0;
   advance(sys, 3 * SIM_HZ, rand);
   sys.pinned = true;
 
+  const watch = motionWatch(sys, ", pinned");
+
   for (let f = 0; f < PINNED_MINUTES * 60 * SIM_HZ; f++) {
-    for (const event of advance(sys, 1, rand)) {
+    const events = advance(sys, 1, rand);
+    watch.frame(events);
+    for (const event of events) {
       if (event.type === "collapse" || event.type === "worldLost") pinnedDeaths++;
     }
     if (sys.era !== "stable") pinnedNonStable++;
@@ -701,8 +793,10 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
   // eras were actually reached is asserted below rather than assumed.
   const cap = Math.ceil(((orbit.stableDuration + 8) * ERAS_PER_ORBIT * 2) / SIM_FRAME_TIME);
 
+  const watch = motionWatch(sys, `, pinned ${orbit.id}`);
+
   for (let f = 0; f < cap && eras < ERAS_PER_ORBIT; f++) {
-    advance(sys, 1, rand);
+    watch.frame(advance(sys, 1, rand));
     if (sys.settle >= 1) {
       settled = true;
     } else if (settled) {
@@ -797,6 +891,43 @@ for (let ci = 1; ci <= ORBITS.length; ci++) {
   );
 }
 
+/* --------------------------------------------------------------------------
+   Motion, across every rig above.
+
+   These are recorded here rather than beside the long run because they are fed
+   by all three rigs — the seeded eras, the pinned re-anchor and the per-orbit
+   Stable Era measurement — and a  call reads its value at the moment it
+   runs. Placed with the long run, they were captured before the two pinned rigs
+   had executed, so those contributed nothing and the row read as though they
+   had been checked. That is the same shape as the finding that added them.
+   -------------------------------------------------------------------------- */
+// The simulation is watched, so a body that jumps is a defect however correct
+// the state it jumps to. Every other invariant here reads the state; this one
+// reads the motion, which is why two teleports could ship under a green run.
+record(
+  "the animation never cuts",
+  `worst ${round(worstStep)} (${worstStepWhat})`,
+  `< ${STEP_LIMIT} units`,
+  worstStep < STEP_LIMIT,
+);
+// C1 as well as C0. A body that goes from crawling to sprinting between two
+// frames has not jumped, and still reads as a discontinuity. The bound is 0.3
+// as well, which is where the two measures happen to meet: the worst change is
+// 0.151 at the start of a settle, so the same headroom applies.
+record("no world fades in that was already here", fadeInWrong, "0", fadeInWrong === 0);
+record(
+  "the animation never whips",
+  `worst ${round(worstJerk)} (${worstJerkWhat})`,
+  `< ${STEP_LIMIT} units`,
+  worstJerk < STEP_LIMIT,
+);
+record(
+  "no trail is cut from a living world",
+  trailsWiped === 0 ? "0" : `${trailsWiped} (worst ${worstTrailShrink} points)`,
+  "0",
+  trailsWiped === 0,
+);
+
 /* -------------------------------------------------------------------------- */
 
 const failed = checks.filter((c) => !c.pass);
@@ -823,6 +954,8 @@ if (process.argv.includes("--json")) {
         worstStep: round(worstStep),
         worstStepWhat,
         trailsWiped,
+        worstJerk: round(worstJerk),
+        worstJerkWhat,
         worldPeaks: worldPeaks.map((w) => ({ ...w, peak: round(w.peak) })),
         checks,
       },

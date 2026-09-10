@@ -6,8 +6,10 @@ import { useEra } from "@/components/EraProvider";
 import {
   frameRadiusFor,
   HOME_COLOR,
+  SETTLE_TIME,
   SUN_COLORS,
   WORLD_COLOR,
+  WORLD_FADE_TIME,
   type Orbit,
   type Planet,
   type Point,
@@ -278,10 +280,26 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       // Additive, so trails bloom where the orbits cross.
       ctx.globalCompositeOperation = "lighter";
 
-      // Worlds fade in over the settle, so a new civilisation arrives rather
-      // than popping into place — and again over a rehydration, which is the
-      // same arrival for the same reason.
-      const worldAlpha = system.settle * hydration;
+      // A world that arrived with this civilisation fades in, so a new one
+      // arrives rather than popping into place. A world that was already here
+      // does not.
+      //
+      // This used to be `system.settle * hydration` for every world at once,
+      // which took the whole system to alpha 0 on the frame a settle began.
+      // Two bodies never deserved that: Trisolaris, which `resetInto` deliber-
+      // ately carries across a collapse instead of ghosting, and every world
+      // of a civilisation that *survived*, where nothing is replaced at all.
+      // Both were faded out and back in over five seconds starting from the
+      // frame the era notice landed in — so the trails the simulation is
+      // careful to carry across were invisible for exactly the moment they
+      // exist to cover.
+      //
+      // The fade runs over WORLD_FADE_TIME rather than the whole settle, so it
+      // is the mirror of the ghost fade-out it plays against: a world at 0.3
+      // is replacing a ghost at 0.7, and the pair holds a roughly constant
+      // brightness instead of dipping through the middle of the cross-fade.
+      const arrival = Math.min(1, (system.settle * SETTLE_TIME) / WORLD_FADE_TIME);
+      const alphaFor = (planet: Planet) => (planet.fadesIn ? arrival : 1) * hydration;
 
       // Their paths are thinner and dimmer than the suns', so the eye reads
       // the bright periodic orbit first and the quiet ones second.
@@ -291,7 +309,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
         drawTrail(
           planet.trail,
           isHome ? HOME_COLOR : WORLD_COLOR,
-          (isHome ? 0.5 : 0.28) * worldAlpha,
+          (isHome ? 0.5 : 0.28) * alphaFor(planet),
           isHome ? 1.1 : 0.7,
           hydration,
         );
@@ -320,7 +338,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       });
 
       system.planets.forEach((planet) => {
-        if (planet.alive) drawWorld(planet, planet.isHome, worldAlpha);
+        if (planet.alive) drawWorld(planet, planet.isHome, alphaFor(planet));
       });
 
       for (let i = 0; i < system.suns.length; i++) {
