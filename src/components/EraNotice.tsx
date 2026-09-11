@@ -118,8 +118,8 @@ export default function EraNotice() {
             <>
               <span className="cjk block text-muted">降维</span>
               <span className="mt-2 block">
-                Everything here began flat — the whole system pressed onto a single
-                line — and is being given its dimensions back.
+                This page arrived flat — the whole of it pressed onto a single line
+                — and is being given its dimensions back.
               </span>
               <span className="mt-2 block text-faint">
                 In the books, this only ever runs the other way.

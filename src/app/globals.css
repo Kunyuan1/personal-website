@@ -180,6 +180,122 @@
   }
 }
 
+/* 降维 — the page arrives as one flattened plane and opens into three
+   dimensions, once, on a visitor's first ever visit.
+
+   The decision is made by a blocking script in <head>, not by React. It has to
+   be in force before the first paint: anything decided after hydration shows
+   the finished page for a few hundred milliseconds and then snaps it to a
+   line, which is a glitch rather than an effect. The script stamps
+   `data-unfold` on the document element; everything below keys off that.
+
+   Only the document scales. `.era-wash`, the notice panel and the departure
+   panel sit outside `.unfold-root` on purpose — the ground the page is pressed
+   onto should not be pressed onto itself, and the caption has to stay readable
+   while the thing it describes is still a line. */
+:root {
+  /* The one number worth turning. Long enough to read as an unfolding rather
+     than a flicker, short enough that a first-time visitor is not kept from
+     the page they came for. */
+  --unfold-ms: 1500ms;
+}
+
+.unfold-root {
+  /* Half a viewport down from the document's top, which is where the middle of
+     the screen is on a page that has just loaded and cannot have been
+     scrolled. A percentage would measure against the document instead, and put
+     the line below the fold on any page taller than the viewport. */
+  transform-origin: 50% 50vh;
+  transform-origin: 50% 50svh;
+}
+
+html[data-unfold="flat"] .unfold-root {
+  /* `backwards`, not `both`, and no standing `transform` declaration to go
+     with it. The from-state applies from the first style resolution — the
+     attribute is stamped before <body> is parsed, so there is no frame in
+     which this paints unflattened — and once the animation is over the
+     element keeps *no* transform at all.
+     
+     That matters beyond tidiness. A finished `forwards` fill leaves
+     `scaleY(1)` in place, and an identity transform is still a containing
+     block for any `position: fixed` descendant. The attribute survives
+     client-side navigation, so a visitor who unfolded on `/` and then hit a
+     404 would have taken that containing block with them. Ending with no
+     transform means nothing has to be cleaned up, and nothing is left to
+     depend on an event firing. */
+  /* A symmetric ease-in-out, chosen by measuring rather than by taste. The
+     obvious pick for "opening" is a strong ease-out, but measured across the
+     timeline cubic-bezier(0.16, 1, 0.3, 1) was half open at 10% of the
+     duration and 97% open at half of it — the visible motion was over in
+     about 400ms and the rest was imperceptible creep from 0.97 to 1. It read
+     as a snap, and no amount of raising --unfold-ms would have fixed it.
+
+     This one runs 0.02 / 0.12 / 0.50 / 0.88 / 0.98 at 10/25/50/75/90% of the
+     duration: the page holds as a line long enough to be read as one, opens
+     through the middle, and settles. */
+  animation: unfold-page var(--unfold-ms) cubic-bezier(0.45, 0, 0.55, 1) backwards;
+}
+
+/* Not scaled to nothing. A zero scale is singular — the compositor is entitled
+   to drop the layer rather than draw a line — and it would take the page's
+   light with it. This is thin enough to read as one row and still be drawn. */
+@keyframes unfold-page {
+  from {
+    transform: scaleY(0.0016);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* The line itself, which is a real element rather than anything the canvas
+   draws: the canvas is inside `.unfold-root` and is being squashed along with
+   everything else, so a line painted in there would be squashed too. */
+.unfold-line {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 50svh;
+  height: 2px;
+  margin-top: -1px;
+  z-index: 30;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(188, 211, 232, 0.35) 18%,
+    rgba(226, 238, 252, 0.95) 50%,
+    rgba(188, 211, 232, 0.35) 82%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 24px rgba(188, 211, 232, 0.5),
+    0 0 72px rgba(188, 211, 232, 0.28);
+}
+
+html[data-unfold="flat"] .unfold-line {
+  /* Linear, so the fade is even. The page's own easing belongs to the page;
+     borrowing it here bent the opacity ramp towards the start and took the
+     line out before the page had begun to move. */
+  animation: unfold-line var(--unfold-ms) linear backwards;
+}
+
+/* Held at full brightness through the quarter of the timeline where the page
+   is still flat, then out by 70% — it is what the page was pressed onto, so it
+   has nothing left to do once the page is off it, and it should not still be
+   lying across a page that has opened. */
+@keyframes unfold-line {
+  0%,
+  25% {
+    opacity: 1;
+  }
+  70%,
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

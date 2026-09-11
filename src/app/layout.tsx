@@ -65,6 +65,42 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+/**
+ * Decides the dimensional unfold, before anything is painted.
+ *
+ * This runs as a blocking script in `<head>`, which is the whole point of it.
+ * The page is statically prerendered and arrives fully formed, so any decision
+ * taken after hydration shows the finished page first and then collapses it —
+ * the visitor sees a glitch, not an unfolding. Running here means the flat
+ * state is in the style system before `<body>` is parsed.
+ *
+ * It refuses in four cases, and each is a case where the effect would be spent
+ * on someone who cannot see it:
+ *
+ *  - not on `/`, because that is the only route with a hero to unfold into
+ *  - in a hidden tab, because a middle-clicked link gets no paint and no
+ *    animation, and would burn the one-shot in the background
+ *  - under `prefers-reduced-motion`, where the key is deliberately *not*
+ *    claimed: the setting asks not to be shown an animation, not to be struck
+ *    off the list of people who have never seen one
+ *  - if this browser has already seen it
+ *
+ * Written as a string rather than a function so it can be inlined verbatim. It
+ * touches nothing React owns — one data attribute on the document element —
+ * so there is no hydration mismatch to worry about, and it has nothing to tear
+ * down: the CSS is written so that the finished animation leaves no transform
+ * behind, rather than leaving one for a listener to come and clear.
+ */
+const unfoldScript = `(function(){try{
+var d=document.documentElement;
+if(location.pathname!=="/")return;
+if(document.hidden)return;
+if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+if(localStorage.getItem("trisolaris.risen")==="1")return;
+localStorage.setItem("trisolaris.risen","1");
+d.dataset.unfold="flat";
+}catch(e){}})();`;
+
 export const viewport: Viewport = {
   themeColor: "#05060a",
   colorScheme: "dark",
@@ -84,6 +120,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           crossOrigin="anonymous"
         />
         <link rel="stylesheet" href={notoSerifSc} />
+        <script dangerouslySetInnerHTML={{ __html: unfoldScript }} />
       </head>
       <body className="flex min-h-full flex-col bg-void text-ink">
         <a
@@ -94,12 +131,25 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </a>
 
         <EraProvider>
+          {/* The ground stays. It is what the page is pressed onto, and a
+              horizon that collapses with the thing resting on it is not a
+              horizon. */}
           <div className="era-wash" aria-hidden />
-          <Nav />
-          <main id="main" className="relative z-10 flex-1">
-            {children}
-          </main>
-          <Footer />
+          <div className="unfold-line" aria-hidden />
+
+          {/* Everything that is *document* — and nothing that is chrome over
+              it. The notice and the departure panel are fixed-position and
+              have to stay legible while the page behind them is still a
+              line; they are also the only things that would be reading out
+              an explanation from inside the effect they explain. */}
+          <div className="unfold-root flex min-h-full flex-1 flex-col">
+            <Nav />
+            <main id="main" className="relative z-10 flex-1">
+              {children}
+            </main>
+            <Footer />
+          </div>
+
           <EraNotice />
           <Departure />
         </EraProvider>

@@ -17,45 +17,6 @@ import {
   type System,
 } from "@/lib/trisolaris";
 
-/**
- * The flattest the scene is ever drawn.
- *
- * Not zero: `scale(1, 0)` is singular and draws nothing at all, and the
- * whole point is that the flat thing is *visible* — a luminous line with
- * every trail and glow in the system stacked onto it.
- */
-const FLAT = 0.015;
-
-/**
- * How far into the rise the horizon has faded out.
- *
- * The flattened system alone is not luminous. Compressing the scene does not
- * concentrate its light — a sun's core is a 4.4px disc that becomes sub-pixel
- * and antialiases *down*, so measured, the flat state peaked at luminance 100
- * against the standing system's 255. A dimmer scene, not a brighter line.
- *
- * So the line is drawn, rather than hoped for. It is not a trick standing in
- * for the squashed system: it is the horizon that system has been pressed
- * onto, and it fades as the system leaves it. With it, the flat state peaks at
- * 184 against a ground of 6, and brightens monotonically across the ramp —
- * 184, 241, 255 — so the line opens into the scene rather than dipping through
- * a dim middle.
- *
- * The ticket forbids a white-out, and compressing the scene is a real way to
- * cause one: every trail and glow is stacked additively onto a handful of rows.
- * Measured as the share of pixels above luminance 245, the worst frame of the
- * ramp is 0.005%, under the 0.013% the standing system sits at anyway. The
- * danger is concentrated at rise 0, where the scene is compressed 5x harder
- * than at 0.1: a white horizon there measures 0.464%, ninety times this one.
- * Peak luminance cannot see any of that — it reads 255 either way.
- *
- * Every number above depends on the `globalCompositeOperation` set at the draw
- * site below, and an earlier version of it measured 174/0.005% while silently
- * compositing `source-over` — occluding 78% of the system it claimed to be the
- * resting place of. Re-measure this block if that line moves.
- */
-const HORIZON_UNTIL = 0.45;
-
 /** Trails are stroked in bands rather than per-segment, to keep it cheap. */
 const TRAIL_BANDS = 14;
 
@@ -263,7 +224,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       ctx.globalAlpha = 1;
     };
 
-    const render = (system: System, hydration: number, rise: number) => {
+    const render = (system: System, hydration: number) => {
       rescale(system);
 
       // Heat comes from the simulation, the same number the CSS palette uses,
@@ -304,23 +265,6 @@ export default function SystemCanvas({ className = "" }: { className?: string })
         ctx.fillStyle = bottom;
         ctx.fillRect(0, 0, width, height);
       }
-
-      // Everything from here down is the system, and everything above it is
-      // the page: the opaque ground and the heat wash have to keep filling the
-      // canvas whatever the system is doing.
-      //
-      // `rise` flattens the scene by scaling it about the horizon. A transform
-      // rather than a squashed `sy`, because the suns and worlds draw their
-      // glows at fixed pixel radii — a 34px corona, a 4.4px core — so
-      // compressing only the projection collapses the *positions* onto a line
-      // and leaves round blobs sitting on it. Under the transform the
-      // positions, the glows and the trail widths all lose the same
-      // dimension together, which is the thing being described: space falls
-      // flat and everything caught in it is preserved exactly, just flat.
-      ctx.save();
-      ctx.translate(0, centerY);
-      ctx.scale(1, Math.max(FLAT, rise));
-      ctx.translate(0, -centerY);
 
       // Additive, so trails bloom where the orbits cross.
       ctx.globalCompositeOperation = "lighter";
@@ -388,54 +332,6 @@ export default function SystemCanvas({ className = "" }: { className?: string })
 
       for (let i = 0; i < system.suns.length; i++) {
         drawSun(system.suns[i].x, system.suns[i].y, SUN_COLORS[i]);
-      }
-
-      ctx.restore();
-
-      // The horizon, drawn outside the transform because it is already flat —
-      // scaling it would collapse the one thing whose job is to be seen.
-      //
-      // Additive, and set here rather than inherited. The `save()` above is
-      // taken *before* the scene sets `lighter`, so `restore()` puts
-      // `source-over` back and this block would otherwise paint over the
-      // squashed system instead of adding to it — which is the difference
-      // between a horizon the system has been pressed onto and an opaque
-      // stand-in hiding the fact that it is dim. Stated explicitly because
-      // moving that `save()` two lines down is a natural tidy-up, and the
-      // silent result would be a horizon that composites the other way.
-      ctx.globalCompositeOperation = "lighter";
-
-      // An ellipse rather than a band across the full width: the light has
-      // been pressed into the part of the frame the system occupies, so it
-      // should fall off towards the edges rather than run out of them.
-      if (rise < HORIZON_UNTIL) {
-        const t = 1 - rise / HORIZON_UNTIL;
-        const strength = t * t * (3 - 2 * t);
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.scale(1, 0.035 + rise * 0.4);
-        // Sized to the nearer edge, not to the width. `centerX` is 0.73 of the
-        // width on the desktop layout, where a reach of 0.42w put the right
-        // edge at 0.64 of the gradient — still carrying about alpha 0.16 of
-        // near-white when the canvas cut it off. A hard vertical line down one
-        // side, held for the first 0.45 of the rise, while the other side
-        // faded out properly: the exact failure the paragraph above claims the
-        // ellipse was chosen to avoid.
-        //
-        // Measured: with 0.42w the last column of the canvas reached luminance
-        // 41 against a ground of 6, fading through 36 and 15 as the horizon
-        // did. Sized to the nearer edge it is 6 — the ground — at every point
-        // of the ramp.
-        const reach = Math.min(centerX, width - centerX);
-        const line = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
-        line.addColorStop(0, `rgba(214, 230, 246, ${0.78 * strength})`);
-        line.addColorStop(0.35, `rgba(188, 211, 232, ${0.30 * strength})`);
-        line.addColorStop(1, `rgba(188, 211, 232, 0)`);
-        ctx.fillStyle = line;
-        ctx.beginPath();
-        ctx.arc(0, 0, reach, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
       }
 
       ctx.globalCompositeOperation = "source-over";
