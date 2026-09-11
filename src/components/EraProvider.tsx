@@ -64,22 +64,6 @@ const HIBERNATION_MIN_MS = 30 * 60 * 1000;
  * absence this is here to measure.
  */
 const PRESENCE_BEAT_MS = 60000;
-/**
- * How long the descent caption stays up.
- *
- * It goes up as the page unfolds rather than after it lands, because it is a
- * caption for something happening on screen and not a report of something that
- * has finished. The unfold itself is over in `--unfold-ms`, which leaves most
- * of this to read two sentences in — near the collapse notice's allowance,
- * which is the closest in length.
- *
- * Not shared with the CSS duration on purpose: one is how long the page takes
- * to open and the other is how long the words stay legible afterwards, and
- * tying them together would mean a faster unfold silently became a caption
- * nobody could finish.
- */
-const UNFOLD_NOTICE_MS = 9000;
-
 /** The hibernation notice is three sentences, and needs longer than a death. */
 const HIBERNATION_NOTICE_MS = 11000;
 /**
@@ -138,12 +122,6 @@ const REHYDRATION_MS = 1500;
  * the page is simply running, easing 0 -> 1 on the way back from a
  * dehydration. Passed rather than stored on the system, because it is a
  * rendering concern and the physics must not be able to see it.
- *
- * The dimensional unfold is deliberately not here. It is a CSS transform on
- * the whole page — see `.unfold-root` in globals.css — so the canvas is
- * squashed as part of the document rather than drawing itself squashed. Doing
- * both would compose to scaleY(rise * unfold), and the system would open at a
- * visibly different rate from the text sitting on top of it.
  */
 type Renderer = (system: System, hydration: number) => void;
 
@@ -166,15 +144,7 @@ export type Notice =
    * open, which is more interesting than an illusion that has to be
    * maintained.
    */
-  | { kind: "hibernation"; awayMs: number; civilizations: number }
-  /**
-   * The system coming out of the flattened page, on a first visit.
-   *
-   * Carries nothing. The other three report an outcome the visitor could not
-   * have predicted; this one names a thing they are watching happen, and the
-   * only fact in it is that it is happening.
-   */
-  | { kind: "descent" };
+  | { kind: "hibernation"; awayMs: number; civilizations: number };
 
 type EraContextValue = {
   era: Era;
@@ -249,48 +219,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
    * was gone for good.
    */
   const pendingHibernationRef = useRef<{ awayMs: number; civilizations: number } | null>(null);
-  /** Whether the descent caption is still owed. See `UNFOLD_NOTICE_MS`. */
-  const pendingDescentRef = useRef(false);
-  /**
-   * That a departure was acknowledged this session, so the descent caption
-   * knows to stand down.
-   *
-   * A ref rather than the `skipHibernation` local it sits beside, because the
-   * two have genuinely different lifetimes: that local is per effect run, and
-   * whether this visitor has already been told about a departure is per
-   * visitor. Reading a departure *consumes* it — DEPARTED_KEY is removed in
-   * the same breath — so any second run of the effect asks a question whose
-   * evidence the first run has already destroyed, and gets the wrong answer.
-   *
-   * React's development double-mount is how that surfaced rather than why it
-   * is wrong: the second pass found no departure, recomputed `skipHibernation`
-   * as false, and re-armed the caption the first pass had correctly
-   * suppressed. Measured — the panel came up reading 降维 with the departure
-   * acknowledgement already on the page behind it. An effect that only behaves
-   * when it runs exactly once is an effect with a latent bug in it, and a ref
-   * is the cheapest possible way not to have written one.
-   */
-  const departureSeenRef = useRef(false);
-  /**
-   * Whether this page is unfolding, decided by the blocking script in `<head>`
-   * rather than here.
-   *
-   * The unfold has to be in force before the first paint — a decision made
-   * after hydration shows the whole page, then snaps it to a line — so the
-   * script runs before `<body>` is parsed, claims the storage key, and stamps
-   * `data-unfold` on the document element. React's only job is to caption it,
-   * and the one honest way to know whether that caption is owed is to read
-   * what the script decided. Re-deriving it from storage here would always say
-   * no, because the script has already claimed the key.
-   */
-  const [unfolding] = useState(() => {
-    if (typeof document === "undefined") return false;
-    // The attribute is set once and never cleared, so this is true for the
-    // whole of the visit the unfold happened on — including when hydration
-    // lands after the animation has already finished, which is exactly when a
-    // caption read off a live animation would have been missed.
-    return document.documentElement.dataset.unfold === "flat";
-  });
   /** See `Renderer`. In a ref, so advancing it costs no React render. */
   const hydrationRef = useRef(1);
 
@@ -432,16 +360,10 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         // changelog rather than as either of the things they are — and the
         // departure is the rarer and more specific of the two.
         skipHibernation = true;
-        departureSeenRef.current = true;
       }
     } catch {
       // No storage: there was no departure to come back from either.
     }
-
-    // The unfold is already running — CSS started it before this effect, and
-    // before the first paint. All that is owed here is the caption, and only
-    // if nothing rarer has a claim on the panel: see `departureSeenRef`.
-    pendingDescentRef.current = unfolding && !departureSeenRef.current;
 
     // How long they were away, and what to say about it. Published on a
     // microtask rather than through the frame loop, for the reason the
@@ -488,21 +410,16 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       advance(system, 380);
       system.era = "stable";
       system.eraElapsed = 0;
-      // No rise, for the same reason there is no orbit: a still frame of a
-      // flattened system is not a picture of anything.
-      //
-      // This is the entire render path for a reduced-motion visitor, and
-      // nothing downstream covers it. `SystemCanvas` is a descendant, so its
-      // effect runs first and calls `registerRenderer` while `systemRef` is
-      // still null, which guards out the draw there; the frame loop below is
-      // never reached; and `onResize` used to recompute dimensions without
-      // repainting, which is fixed there but does not make this line
-      // redundant — a canvas that is correctly sized at mount never fires a
-      // resize at all. Deleting it leaves a blank hero, and no check in the
-      // repo can see it: React's development double-mount hides it by
-      // registering a second time after `systemRef` is populated, so it draws
-      // in development and not in production. Measured that way — a production
-      // build with the setting forced on painted 0 lit pixels.
+      // This one line is the entire render path for a reduced-motion visitor.
+      // `SystemCanvas` is a descendant, so its effect runs first and calls
+      // `registerRenderer` while `systemRef` is still null, which guards out
+      // the draw there; the frame loop below is never reached; and a canvas
+      // that is correctly sized at mount never fires a resize either. Delete
+      // it and the hero is blank, and no check in this repo can see it —
+      // React's development double-mount hides it by registering a second
+      // time after `systemRef` is populated, so it draws in development and
+      // not in production. Measured that way: a production build with the
+      // setting forced on painted 0 lit pixels.
       rendererRef.current?.(system, 1);
       return;
     }
@@ -699,9 +616,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       clearTimeout(noticeTimerRef.current);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-    // Mount-once. `unfolding` comes from a lazy initialiser and never changes,
-    // and is read by the route effect below rather than by this one.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -717,28 +631,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (pathname !== "/") return;
     const pending = pendingHibernationRef.current;
-    if (!pending) {
-      // The descent caption, which loses to both of the others.
-      //
-      // By construction it cannot collide with either: a hibernation needs a
-      // previous visit to have written `lastSeen`, and a departure needs one
-      // to have reached DEPARTURE_AT, and neither is true of a visitor who
-      // has never been here. That is an argument, not a guarantee — storage
-      // can be cleared a key at a time — so the precedence is written down
-      // rather than assumed. It goes this way round because the other two
-      // are the only account anyone gets of something they missed, while
-      // this one is a label for a thing happening in front of them.
-      if (!pendingDescentRef.current) return;
-      pendingDescentRef.current = false;
-      queueMicrotask(() => {
-        setNotice({ kind: "descent" });
-        setNoticeVisible(true);
-        clearTimeout(noticeTimerRef.current);
-        noticeTimerRef.current = setTimeout(() => setNoticeVisible(false), UNFOLD_NOTICE_MS);
-      });
-      return;
-    }
-    pendingDescentRef.current = false;
+    if (!pending) return;
     pendingHibernationRef.current = null;
     queueMicrotask(() => {
       setNotice({ kind: "hibernation", ...pending });

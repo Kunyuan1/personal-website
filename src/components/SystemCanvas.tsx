@@ -48,20 +48,16 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     let centerY = 0;
 
     const resize = () => {
-      // Layout size, not the painted rect.
+      // Layout size, not the painted rect. `getBoundingClientRect()` reports
+      // the box *after* transforms, so any transformed ancestor silently
+      // resizes the backing buffer — an earlier arrival sequence scaled the
+      // whole document and this read 1px tall against a layout height of 712,
+      // drawing the entire system into a one-pixel buffer with nothing to
+      // recover it, because a CSS animation ending fires no resize event.
       //
-      // `getBoundingClientRect()` reports the box *after* transforms, and on a
-      // first visit this canvas is measured while the whole page is flattened
-      // to a line — see `.unfold-root`. It read 1px tall against a layout
-      // height of 712, allocated a 1px backing buffer, and drew the entire
-      // three-body system into it. Nothing ever fixed it afterwards either:
-      // a CSS animation ending fires no resize event, so the simulation was
-      // gone for the rest of the visit.
-      //
-      // `clientWidth`/`clientHeight` are layout geometry and ignore transforms,
-      // which is the correct question to ask here — the backing buffer should
-      // match the space the canvas occupies in the document, not the space it
-      // currently happens to be squashed into.
+      // Nothing transforms this today. It stays the right question anyway: the
+      // buffer should match the space the canvas occupies in the document, not
+      // the space it currently happens to be squashed into.
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = canvas.clientWidth;
       height = canvas.clientHeight;
