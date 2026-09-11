@@ -231,7 +231,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       // so the canvas and the page can never drift out of step — including
       // through a rehydration, which scales both by the same progress value.
       const warmth = system.heat * hydration;
-      // Shared with the droplet canvas, so a second canvas cannot be written
+      // Shared via canvas-ground.ts, so a second opaque canvas cannot be written
       // without the rule this comment states. See canvas-ground.ts.
       const [r, g, b] = groundFor(warmth);
 

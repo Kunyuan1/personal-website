@@ -27,18 +27,3 @@ export function groundFor(heat: number): [number, number, number] {
     Math.round(cold[2] + (hot[2] - cold[2]) * warmth),
   ];
 }
-
-/**
- * `--heat` as the page currently has it.
- *
- * For a canvas that is not subscribed to the simulation. `EraProvider` publishes
- * this property on the document element on every route, quantised to 1%, so
- * reading it is how a component can warm with the page without importing the
- * three-body problem to do it.
- */
-export function heatFromDocument(): number {
-  if (typeof document === "undefined") return 0;
-  const raw = getComputedStyle(document.documentElement).getPropertyValue("--heat");
-  const heat = Number.parseFloat(raw);
-  return Number.isFinite(heat) ? Math.max(0, Math.min(1, heat)) : 0;
-}
