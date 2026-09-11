@@ -113,7 +113,10 @@
 }
 
 @layer utilities {
-  /* Chinese accent text — set in the CJK serif, never as the only label. */
+  /* Chinese accent text — set in the CJK serif, never as the only label.
+     That rule is load-bearing, not stylistic: it is what lets the subset be
+     requested with `display=block` in layout.tsx without a blocked glyph ever
+     withholding anything. */
   .cjk {
     font-family: "Noto Serif SC", var(--font-display), ui-serif, serif;
     font-weight: 400;

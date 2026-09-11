@@ -41,6 +41,18 @@ const description = `${site.role} — ${site.study} at the ${site.school}. Real-
  * of a session — which is the load with the curtain over it. The block period
  * is capped at 3s and `--intro-hold` is 3s, so a subset that never arrives
  * swaps in at the moment the tear starts, masked by it.
+ *
+ * What makes the trade safe rather than merely favourable is a rule the site
+ * already keeps: CJK here is *never the only label* — see `.cjk` in
+ * globals.css, and every use of it. `文明` has `Civilization` beside it and
+ * `冬眠` sits above three English sentences. So a blocked glyph can never
+ * withhold information; the worst it can do is leave a gap where an accent
+ * would have been, on the loads that get no curtain — a cold-cache deep link,
+ * a reduced-motion visitor. Blank text is normally the reason to prefer
+ * `swap`, and that reason does not apply to text nothing depends on.
+ *
+ * Flip this back to `swap` if that rule ever stops holding. It is the whole
+ * argument.
  */
 const notoSerifSc = `https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400&text=${encodeURIComponent(
   CJK_GLYPHS,

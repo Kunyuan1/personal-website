@@ -136,6 +136,31 @@ revealed it. Pinning the scroll position changes no layout at all (measured: 0px
 and catches every input including a scrollbar drag, which `preventDefault` on
 wheel and touch alone would miss.
 
+## Why the CJK subset blocks rather than swaps
+
+`display=block` is a property of the font, so it applies everywhere `.cjk`
+does — 21 places. That is a site-wide setting answering a one-screen problem,
+which is normally the wrong shape, and blank text is normally the reason to
+prefer `swap`.
+
+It is safe here because of a rule the site already keeps: **CJK is never the
+only label.** `文明` has `Civilization` beside it; `冬眠` sits above three
+English sentences. A blocked glyph cannot withhold information — the worst it
+does is leave a gap where an accent would have been.
+
+That breaks the symmetry. `swap`'s cost is the two largest glyphs on screen
+visibly restyling several hundred milliseconds into a motionless black hold,
+which is the same artefact the halo went to three attempts to remove, only
+bigger. `block`'s cost is a missing decoration on the loads that get no curtain
+— a cold-cache deep link, a reduced-motion visitor — and the subset is a couple
+of kilobytes, so the 3s ceiling almost never binds.
+
+The `.cjk` fallback chain is deliberately left alone. `var(--font-display)` is
+Latin-only, and per-glyph fallback already sends Chinese through it to a system
+Song/Ming face while digits and Latin in the same span stay in Instrument
+Serif. Naming CJK system faces ahead of it would restyle the digits in mixed
+spans like `文明 #4` — a real regression in exchange for nothing.
+
 ## Four ways the one-shot could have been quietly destroyed
 
 Each spends the sequence on somebody who cannot see it, and each fails silently.
