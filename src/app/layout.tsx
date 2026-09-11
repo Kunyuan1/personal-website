@@ -103,16 +103,24 @@ export const metadata: Metadata = {
  * by the time anything is on screen, and it can read `--intro-hold` straight
  * out of the cascade rather than keeping a second copy of it.
  *
- * It refuses in four cases, each one a case where the sequence would be spent
+ * It runs on every document load of `/`. An introduction shown once and never
+ * again is one most visitors never really see: the first arrival is the one
+ * spent working out what the site is, and by the second — the visit made with
+ * intent — it is already gone. So it greets every arrival.
+ *
+ * A client-side navigation back to `/` is not a document load and does not
+ * replay it. That distinction is free rather than engineered: this is a
+ * blocking script in `<head>`, so it runs when a document is parsed and at no
+ * other time. Returning to the home page from `/projects` is a tab change, not
+ * an arrival, and is left alone.
+ *
+ * It refuses in three cases, each one a case where the sequence would be spent
  * on somebody who cannot see it:
  *
  *  - not on `/`, because arriving at a deep link is not an arrival
  *  - in a hidden tab, because a middle-clicked link gets no paint and no
- *    animation, and would burn the one-shot in the background
- *  - under `prefers-reduced-motion`, where the key is deliberately *not*
- *    claimed: the setting asks not to be shown an animation, not to be struck
- *    off the list of people who have never seen one
- *  - if this browser has already seen it
+ *    animation, so the tear would be over before it was ever looked at
+ *  - under `prefers-reduced-motion`, which asks not to be shown an animation
  *
  * Scrolling is pinned rather than locked with `overflow: hidden`. The lock is
  * the obvious fix and it is wrong here: hiding the root's overflow takes the
@@ -137,23 +145,14 @@ export const metadata: Metadata = {
  * from an extension or a user stylesheet is both common and *not* the same
  * setting as `prefers-reduced-motion`.
  *
- * The key is claimed at the end rather than at parse time, for the same reason
- * the four guards exist. Somebody who reloads at 400ms because a black page
- * reads as a broken one had not seen it, and should not have spent it. There
- * is no re-entrancy to protect against: this runs once per document load.
- *
- * `?intro=1` replays it regardless. A once-per-lifetime sequence that cannot
- * be replayed is one nobody can judge, and the alternative is clearing site
- * storage by hand.
+ * There is no re-entrancy to protect against: this runs once per document
+ * load, and `end` guards itself with `done` besides.
  */
 const introScript = `(function(){try{
 var d=document.documentElement;
 if(location.pathname!=="/")return;
 if(document.hidden)return;
 if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
-var replay=false;
-try{replay=new URLSearchParams(location.search).get("intro")==="1";}catch(e){}
-if(!replay&&localStorage.getItem("trisolaris.intro")==="1")return;
 d.setAttribute("data-intro","on");
 var stop=function(e){e.preventDefault();},pin=function(){window.scrollTo(0,0);};
 window.addEventListener("wheel",stop,{passive:false});
@@ -167,8 +166,7 @@ document.removeEventListener("animationend",onEnd,true);
 window.removeEventListener("wheel",stop);
 window.removeEventListener("touchmove",stop);
 window.removeEventListener("scroll",pin);
-d.removeAttribute("data-intro");
-try{localStorage.setItem("trisolaris.intro","1");}catch(e){}};
+d.removeAttribute("data-intro");};
 var onEnd=function(e){if(e.animationName==="intro-tear")end();};
 document.addEventListener("animationend",onEnd,true);
 var total=ms("--intro-hold")+ms("--intro-glitch");
