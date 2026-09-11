@@ -17,6 +17,15 @@ import {
   type System,
 } from "@/lib/trisolaris";
 
+/**
+ * The flattest the scene is ever drawn.
+ *
+ * Not zero: `scale(1, 0)` is singular and draws nothing at all, and the
+ * whole point is that the flat thing is *visible* — a luminous line with
+ * every trail and glow in the system stacked onto it.
+ */
+const FLAT = 0.015;
+
 /** Trails are stroked in bands rather than per-segment, to keep it cheap. */
 const TRAIL_BANDS = 14;
 
@@ -224,7 +233,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       ctx.globalAlpha = 1;
     };
 
-    const render = (system: System, hydration: number) => {
+    const render = (system: System, hydration: number, rise: number) => {
       rescale(system);
 
       // Heat comes from the simulation, the same number the CSS palette uses,
@@ -265,6 +274,23 @@ export default function SystemCanvas({ className = "" }: { className?: string })
         ctx.fillStyle = bottom;
         ctx.fillRect(0, 0, width, height);
       }
+
+      // Everything from here down is the system, and everything above it is
+      // the page: the opaque ground and the heat wash have to keep filling the
+      // canvas whatever the system is doing.
+      //
+      // `rise` flattens the scene by scaling it about the horizon. A transform
+      // rather than a squashed `sy`, because the suns and worlds draw their
+      // glows at fixed pixel radii — a 34px corona, a 4.4px core — so
+      // compressing only the projection collapses the *positions* onto a line
+      // and leaves round blobs sitting on it. Under the transform the
+      // positions, the glows and the trail widths all lose the same
+      // dimension together, which is the thing being described: space falls
+      // flat and everything caught in it is preserved exactly, just flat.
+      ctx.save();
+      ctx.translate(0, centerY);
+      ctx.scale(1, Math.max(FLAT, rise));
+      ctx.translate(0, -centerY);
 
       // Additive, so trails bloom where the orbits cross.
       ctx.globalCompositeOperation = "lighter";
@@ -334,6 +360,7 @@ export default function SystemCanvas({ className = "" }: { className?: string })
         drawSun(system.suns[i].x, system.suns[i].y, SUN_COLORS[i]);
       }
 
+      ctx.restore();
       ctx.globalCompositeOperation = "source-over";
     };
 
