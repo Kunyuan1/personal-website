@@ -53,7 +53,7 @@ export const projects: Project[] = [
     ],
     tech: ["React", "Node.js", "WebSockets", "Vite"],
     github: "https://github.com/Kunyuan1/Imposter",
-    live: "https://imposter-inky.vercel.app/",
+    live: "https://imposter-u6ak.onrender.com/",
     images: [],
   },
   {
