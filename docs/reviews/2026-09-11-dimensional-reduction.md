@@ -6,9 +6,14 @@
 every route still `○ (Static)`.
 
 On a visitor's first ever visit the whole document arrives as a single luminous
-line across the middle of the screen and opens into three dimensions over
-1.5 seconds. Nav, name, headline, links, the simulation — one flattened plane,
-opening. Once, and never again.
+line across the middle of a black screen, holds there for two seconds, and then
+unravels into the page over 1.2. Nav, name, headline, links, the simulation —
+one flattened plane, opening. Once, and never again.
+
+The hold is the effect. An earlier cut eased straight out of the line and was
+measured half open a tenth of a second in; what reads as deliberate rather than
+as a rendering fault is the page sitting there, flat and lit, long enough that
+you are sure it meant to.
 
 ## The version this replaces
 
@@ -107,12 +112,39 @@ enough to be read as one, opens through the middle, and settles. The line now
 holds full brightness through the first quarter and is gone by 70%, on `linear`
 timing so the fade is even.
 
-Shipped as measured, at `--unfold-ms: 1500ms`:
+The hold is a delay rather than flat keyframes at the head of the animation:
+`--unfold-hold: 2000ms`, then `--unfold-ms: 1200ms` of unravelling. `backwards`
+fill is what makes the delay show the line instead of the finished page.
 
-| % | 0 | 10 | 25 | 50 | 75 | 90 | 100 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `scaleY` | 0.002 | 0.019 | 0.122 | 0.501 | 0.880 | 0.982 | 1.000 |
-| line opacity | 1.00 | 1.00 | 1.00 | 0.44 | 0.00 | 0.00 | 0.00 |
+Shipped, driven by seeking the real animations:
+
+| ms | 0 | 500 | 1000 | 1999 | 2000 | 2300 | 2600 | 2900 | 3200 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `scaleY` | 0.002 | 0.002 | 0.002 | 0.002 | 0.002 | 0.122 | 0.501 | 0.880 | 1.000 |
+| line | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.75 | 0.50 | 0.25 | 0.00 |
+
+The line's `forwards` fill is load-bearing rather than habit. The rule lights it
+with `opacity: 1` so it is visible through the delay, and without `forwards` the
+animated value is dropped at the end and that `1` comes straight back —
+relighting the line across a page that has finished opening.
+
+## The transform ate the simulation
+
+`SystemCanvas` sized its backing buffer from `getBoundingClientRect()`, which
+reports the box *after* transforms. On a first visit the attribute is stamped
+before `<body>` is parsed, so the canvas measured itself while the page was
+already flattened: **a rect 1px tall against a layout height of 712**. It
+allocated a 1px buffer and drew the entire three-body system into it.
+
+Nothing recovered afterwards, either. A CSS animation ending fires no resize
+event, so the simulation was gone for the rest of the visit — which is exactly
+how it was reported: the line worked, and the suns never came back.
+
+Fixed by measuring `clientWidth`/`clientHeight`, which are layout geometry and
+ignore transforms. That is the right question anyway: the buffer should match
+the space the canvas occupies in the document, not the space it is momentarily
+squashed into. Driven by flattening the page *before* the canvas measures —
+buffer 1897x1066, 10,609 lit pixels, peak 255.
 
 ## Four ways the one-shot could have been quietly destroyed
 
