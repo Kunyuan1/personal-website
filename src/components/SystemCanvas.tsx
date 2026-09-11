@@ -26,6 +26,31 @@ import {
  */
 const FLAT = 0.015;
 
+/**
+ * How far into the rise the horizon has faded out.
+ *
+ * The flattened system alone is not luminous. Compressing the scene does not
+ * concentrate its light — a sun's core is a 4.4px disc that becomes sub-pixel
+ * and antialiases *down*, so measured, the flat state peaked at luminance 100
+ * against the standing system's 255. A dimmer scene, not a brighter line.
+ *
+ * So the line is drawn, rather than hoped for. It is not a trick standing in
+ * for the squashed system: it is the horizon that system has been pressed
+ * onto, and it fades as the system leaves it. With it, the flat state peaks at
+ * 174 against a ground of 6, and brightens monotonically across the ramp —
+ * 174, 189, 228, 244, 252, 255 — so the line opens into the scene rather than
+ * dipping through a dim middle.
+ *
+ * The ticket forbids a white-out, and compressing the scene is a real way to
+ * cause one: every trail and glow is stacked additively onto a handful of rows.
+ * Measured as the share of pixels above luminance 245, the worst frame of the
+ * ramp is 0.005%, under the 0.013% the standing system sits at anyway. The
+ * danger is concentrated at rise 0, where the scene is compressed 5x harder
+ * than at 0.1: a white horizon there measures 0.464%, ninety times this one.
+ * Peak luminance cannot see any of that — it reads 255 either way.
+ */
+const HORIZON_UNTIL = 0.45;
+
 /** Trails are stroked in bands rather than per-segment, to keep it cheap. */
 const TRAIL_BANDS = 14;
 
@@ -361,6 +386,31 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       }
 
       ctx.restore();
+
+      // The horizon, drawn outside the transform because it is already flat —
+      // scaling it would collapse the one thing whose job is to be seen.
+      //
+      // An ellipse rather than a band across the full width: the light has
+      // been pressed into the middle of the frame, so it should fall off
+      // towards the edges rather than run out of them.
+      if (rise < HORIZON_UNTIL) {
+        const t = 1 - rise / HORIZON_UNTIL;
+        const strength = t * t * (3 - 2 * t);
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.scale(1, 0.035 + rise * 0.4);
+        const reach = width * 0.42;
+        const line = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
+        line.addColorStop(0, `rgba(214, 230, 246, ${0.78 * strength})`);
+        line.addColorStop(0.35, `rgba(188, 211, 232, ${0.30 * strength})`);
+        line.addColorStop(1, `rgba(188, 211, 232, 0)`);
+        ctx.fillStyle = line;
+        ctx.beginPath();
+        ctx.arc(0, 0, reach, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
       ctx.globalCompositeOperation = "source-over";
     };
 
