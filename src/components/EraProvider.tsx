@@ -43,6 +43,15 @@ const DEPARTED_KEY = "trisolaris.departed";
  */
 const LAST_SEEN_KEY = "trisolaris.lastSeen";
 /**
+ * That this visitor has already watched the system rise out of the page.
+ *
+ * A dedicated key rather than inferring a first visit from the absence of the
+ * others: the presence beat writes `lastSeen` on load, so "no history" is true
+ * for a moment and then is not, and #9's findings are all about exactly that
+ * kind of inference being fragile.
+ */
+const RISEN_KEY = "trisolaris.risen";
+/**
  * How long away counts as a hibernation rather than a moment's inattention.
  *
  * Half an hour, from the ticket. Well clear of DEHYDRATION_MS, which is the
@@ -98,6 +107,21 @@ const HIBERNATION_NOTICE_MS = 11000;
  * `localStorage["trisolaris.civilization"]` to 25 and wait.
  */
 const DEPARTURE_AT = 25;
+/**
+ * How long the system takes to rise out of the flat page, in milliseconds.
+ *
+ * On a first visit the hero begins as a single luminous line — the whole
+ * system compressed onto one row, every trail and glow preserved and stacked
+ * — and opens into three dimensions. The page is not *showing* the flattened
+ * thing; the page **is** it, and the system comes out of it.
+ *
+ * 2000ms is a starting guess, chosen the way REHYDRATION_MS was not: that one
+ * was watched at 900, 1500 and 3000 before it settled at 1500. This wants the
+ * same treatment, and is the one number in this feature that cannot be
+ * decided before it is seen.
+ */
+const RISE_MS = 2000;
+
 /** Most simulation time a single animation frame may catch up on, in seconds. */
 const MAX_CATCHUP = 0.5;
 /** How long the collapse notice stays on screen. */
@@ -118,12 +142,19 @@ const DEHYDRATION_MS = 5000;
 const REHYDRATION_MS = 1500;
 
 /**
- * Draws the system, and takes rehydration progress along with it: 1 whenever
- * the page is simply running, easing 0 -> 1 on the way back from a
- * dehydration. Passed rather than stored on the system, because it is a
- * rendering concern and the physics must not be able to see it.
+ * Draws the system, and takes two render-only ramps along with it.
+ *
+ * `hydration` is rehydration progress: 1 whenever the page is simply running,
+ * easing 0 -> 1 on the way back from a dehydration.
+ *
+ * `rise` is dimensional: 0 is the system flat, compressed onto a single line,
+ * and 1 is the system in three dimensions. It runs once, on a visitor's first
+ * ever visit, and is 1 for everyone else.
+ *
+ * Both are passed rather than stored on the system, because they are
+ * rendering concerns and the physics must not be able to see them.
  */
-type Renderer = (system: System, hydration: number) => void;
+type Renderer = (system: System, hydration: number, rise: number) => void;
 
 /**
  * What just became of the current civilisation. A Chaotic Era resolves one way
@@ -219,6 +250,35 @@ export default function EraProvider({ children }: { children: ReactNode }) {
    * was gone for good.
    */
   const pendingHibernationRef = useRef<{ awayMs: number; civilizations: number } | null>(null);
+  /**
+   * Whether this visitor has the rise coming, decided during *render*.
+   *
+   * It cannot wait for an effect. `SystemCanvas` is a child, so its effect —
+   * which registers the renderer and draws one frame immediately — runs before
+   * this component's effects do. Deciding in the load effect meant that first
+   * frame went out at `rise = 1`, and the visitor saw the system fully formed
+   * for a frame before it collapsed flat and rose again.
+   *
+   * A lazy `useState` initialiser runs during render, which is before any
+   * child effect, and runs once. On the server it returns false — there is no
+   * storage to read and nothing is being drawn — and nothing here reaches the
+   * markup, so the two renders cannot disagree about anything the DOM sees.
+   */
+  const [startFlat] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
+      return localStorage.getItem(RISEN_KEY) !== "1";
+    } catch {
+      // No storage: no rise. The conservative failure for a one-off effect is
+      // not playing it, rather than playing it on every single visit.
+      return false;
+    }
+  });
+  /** See `Renderer`. In a ref, so advancing it costs no React render. */
+  const riseRef = useRef(startFlat ? 0 : 1);
+  /** When the rise began, or 0 if it is not running. Wall clock. */
+  const riseStartRef = useRef(0);
   /** See `Renderer`. In a ref, so advancing it costs no React render. */
   const hydrationRef = useRef(1);
 
@@ -226,7 +286,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     rendererRef.current = fn;
     // Draw immediately so a newly mounted canvas isn't blank until the next
     // frame — which matters when the simulation is paused for reduced motion.
-    if (fn && systemRef.current) fn(systemRef.current, hydrationRef.current);
+    if (fn && systemRef.current) fn(systemRef.current, hydrationRef.current, riseRef.current);
   }, []);
 
   const setStabilised = useCallback((value: boolean) => {
@@ -265,7 +325,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     } catch {
       // Nothing to clear if there was nothing to store.
     }
-    rendererRef.current?.(system, hydrationRef.current);
+    rendererRef.current?.(system, hydrationRef.current, riseRef.current);
   }, []);
 
   /**
@@ -370,6 +430,18 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     // departure acknowledgement is: the loop does not run for a visitor who
     // prefers reduced motion, or one whose tab is hidden at load, and this
     // is a one-shot message that has to survive both.
+    // The rise runs once in a visitor's life. Whether it is coming was decided
+    // during render — see `startFlat` — so all that is left here is to start
+    // its clock and to claim it, which happens even under reduced motion so
+    // that the same person does not meet the animation later on a machine
+    // without that setting.
+    if (startFlat) riseStartRef.current = performance.now();
+    try {
+      localStorage.setItem(RISEN_KEY, "1");
+    } catch {
+      // Nothing to claim it with; `startFlat` already returned false.
+    }
+
     try {
       const lastSeen = Number(localStorage.getItem(LAST_SEEN_KEY));
       localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
@@ -410,7 +482,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       advance(system, 380);
       system.era = "stable";
       system.eraElapsed = 0;
-      rendererRef.current?.(system, 1);
+      // Reduced motion: no rise, for the same reason there is no orbit — a
       return;
     }
 
@@ -539,6 +611,18 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // The system coming out of the flat page. Same shape as the ramp above,
+      // same smoothstep, and it runs exactly once in a visitor's life.
+      if (riseStartRef.current) {
+        const t = (now - riseStartRef.current) / RISE_MS;
+        if (t >= 1) {
+          riseStartRef.current = 0;
+          riseRef.current = 1;
+        } else {
+          riseRef.current = t * t * (3 - 2 * t);
+        }
+      }
+
       // Publish heat to CSS. Quantised to 1%, so a full fade costs at most a
       // hundred style recalculations rather than one per frame. Scaled by
       // rehydration so a returning visitor warms back up to the era they left
@@ -558,7 +642,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         setStabilisedState(stabilisedRef.current);
       }
 
-      rendererRef.current?.(sys, hydrationRef.current);
+      rendererRef.current?.(sys, hydrationRef.current, riseRef.current);
       frame = requestAnimationFrame(tick);
     };
 
@@ -606,7 +690,9 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       clearTimeout(noticeTimerRef.current);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+    // `startFlat` comes from a lazy initialiser and never changes, so this stays
+    // a mount-once effect; it is listed because the effect reads it.
+  }, [startFlat]);
 
   /**
    * Show the hibernation gap once the visitor is on the route that can render
