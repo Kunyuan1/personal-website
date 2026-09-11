@@ -194,10 +194,12 @@
    onto should not be pressed onto itself, and the caption has to stay readable
    while the thing it describes is still a line. */
 :root {
-  /* The one number worth turning. Long enough to read as an unfolding rather
-     than a flicker, short enough that a first-time visitor is not kept from
-     the page they came for. */
-  --unfold-ms: 1500ms;
+  /* How long the page sits there as a line before anything happens. This is
+     the effect — a horizontal line on a black screen, holding long enough that
+     you are certain it is deliberate rather than a rendering fault. */
+  --unfold-hold: 2000ms;
+  /* How long the unravelling itself takes, once the hold is over. */
+  --unfold-ms: 1200ms;
 }
 
 .unfold-root {
@@ -233,7 +235,8 @@ html[data-unfold="flat"] .unfold-root {
      This one runs 0.02 / 0.12 / 0.50 / 0.88 / 0.98 at 10/25/50/75/90% of the
      duration: the page holds as a line long enough to be read as one, opens
      through the middle, and settles. */
-  animation: unfold-page var(--unfold-ms) cubic-bezier(0.45, 0, 0.55, 1) backwards;
+  animation: unfold-page var(--unfold-ms) cubic-bezier(0.45, 0, 0.55, 1)
+    var(--unfold-hold) backwards;
 }
 
 /* Not scaled to nothing. A zero scale is singular — the compositor is entitled
@@ -275,23 +278,27 @@ html[data-unfold="flat"] .unfold-root {
 }
 
 html[data-unfold="flat"] .unfold-line {
-  /* Linear, so the fade is even. The page's own easing belongs to the page;
-     borrowing it here bent the opacity ramp towards the start and took the
-     line out before the page had begun to move. */
-  animation: unfold-line var(--unfold-ms) linear backwards;
+  /* Lit for the whole hold — the animation has a delay and no `backwards`
+     fill, so during the hold the element simply uses this value. */
+  opacity: 1;
+  /* `forwards` is load-bearing, not habit. Without it the animated value is
+     dropped when the animation ends and `opacity: 1` above comes straight back,
+     relighting the line across a page that has finished opening.
+
+     Linear, so the fade is even. The page's own easing belongs to the page;
+     borrowing it here bent the opacity ramp towards the start. */
+  animation: unfold-line var(--unfold-ms) linear var(--unfold-hold) forwards;
 }
 
-/* Held at full brightness through the quarter of the timeline where the page
-   is still flat, then out by 70% — it is what the page was pressed onto, so it
-   has nothing left to do once the page is off it, and it should not still be
-   lying across a page that has opened. */
+/* Out across the unravelling. It is what the page was pressed onto, so it has
+   nothing left to do once the page is off it, and it should not still be lying
+   across a page that has opened. The holding is done by the delay now, not by
+   flat keyframes at the start. */
 @keyframes unfold-line {
-  0%,
-  25% {
+  from {
     opacity: 1;
   }
-  70%,
-  100% {
+  to {
     opacity: 0;
   }
 }
