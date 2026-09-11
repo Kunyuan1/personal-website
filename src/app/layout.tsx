@@ -74,6 +74,13 @@ export const metadata: Metadata = {
  * the visitor sees a glitch, not an unfolding. Running here means the flat
  * state is in the style system before `<body>` is parsed.
  *
+ * `?unfold=1` replays it regardless of whether this browser has seen it. That
+ * exists because the alternative is clearing site storage by hand every time,
+ * and a once-per-lifetime effect that cannot be replayed is one nobody can
+ * judge — including whoever has to decide `--unfold-ms`. It overrides the
+ * seen-already check and nothing else: a hidden tab still gets no animation
+ * frames, and reduced motion is a preference rather than an obstacle.
+ *
  * It refuses in four cases, and each is a case where the effect would be spent
  * on someone who cannot see it:
  *
@@ -96,7 +103,7 @@ var d=document.documentElement;
 if(location.pathname!=="/")return;
 if(document.hidden)return;
 if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
-if(localStorage.getItem("trisolaris.risen")==="1")return;
+if(location.search.indexOf("unfold=1")<0&&localStorage.getItem("trisolaris.risen")==="1")return;
 localStorage.setItem("trisolaris.risen","1");
 d.dataset.unfold="flat";
 }catch(e){}})();`;

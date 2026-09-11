@@ -130,6 +130,21 @@ silently — the visitor simply never gets it, and nothing anywhere reports that
 4. **No storage.** Refusing is the conservative failure for a one-off: better
    never than on every single visit.
 
+## Replaying it
+
+`/?unfold=1` plays it again regardless of whether this browser has seen it.
+
+Not a debug hook left in by accident. A once-per-lifetime effect that cannot be
+replayed is one nobody can judge — including whoever has to settle
+`--unfold-ms`, which is the one number here that cannot be decided by
+measurement. The alternative is clearing site storage by hand every time, which
+in Chrome means getting past the console's paste guard first.
+
+It overrides the seen-already check and nothing else. A hidden tab still gets no
+animation frames, and reduced motion is a preference rather than an obstacle.
+Driven across five cases: first visit, seen-already, `?unfold=1`, `?unfold=0`
+and `?foo=bar` — only the first and third unfold.
+
 ## The caption
 
 A fourth `Notice` kind, `descent`, through the panel the site already uses for
