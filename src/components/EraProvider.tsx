@@ -275,18 +275,20 @@ export default function EraProvider({ children }: { children: ReactNode }) {
    * That a departure was acknowledged this session, so the descent caption
    * knows to stand down.
    *
-   * A ref rather than the `skipHibernation` local it sits beside, because that
-   * local is recomputed per mount and this question is not. Reading a
-   * departure *consumes* it — DEPARTED_KEY is removed in the same breath — so
-   * under React's development double-mount the second pass finds no departure,
-   * recomputes `skipHibernation` as false, and re-arms the caption that the
-   * first pass had correctly suppressed. Measured: the panel came up reading
-   * 降维 with the departure acknowledgement already on the page behind it.
+   * A ref rather than the `skipHibernation` local it sits beside, because the
+   * two have genuinely different lifetimes: that local is per effect run, and
+   * whether this visitor has already been told about a departure is per
+   * visitor. Reading a departure *consumes* it — DEPARTED_KEY is removed in
+   * the same breath — so any second run of the effect asks a question whose
+   * evidence the first run has already destroyed, and gets the wrong answer.
    *
-   * Refs survive that remount, which is the whole reason this is one. Not a
-   * development-only concern dressed up as a real one: an effect that only
-   * behaves when it runs exactly once is an effect with a latent bug in it,
-   * and this is the cheapest possible way not to have written one.
+   * React's development double-mount is how that surfaced rather than why it
+   * is wrong: the second pass found no departure, recomputed `skipHibernation`
+   * as false, and re-armed the caption the first pass had correctly
+   * suppressed. Measured — the panel came up reading 降维 with the departure
+   * acknowledgement already on the page behind it. An effect that only behaves
+   * when it runs exactly once is an effect with a latent bug in it, and a ref
+   * is the cheapest possible way not to have written one.
    */
   const departureSeenRef = useRef(false);
   /**
@@ -312,6 +314,18 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     // The key is claimed below only if the rise actually starts, so arriving
     // at /about costs nothing and the next visit to `/` still gets it.
     if (pathname !== "/") return false;
+    // Nor in a tab that is not being looked at. Effects run in hidden tabs and
+    // animation frames do not, so a middle-clicked link or a restored session
+    // would set the clock, claim the key, and queue the caption against a rAF
+    // that fires whenever the visitor gets round to the tab — by which point
+    // `now - riseStartRef` is thirty seconds, `t` is 15, and the ramp snaps to
+    // 1 on the first painted frame. A fully formed system, a caption
+    // describing a rise nobody saw, and the one-shot spent for good.
+    //
+    // Refusing to start is better than deferring: it is the same rule the
+    // deep-link case above settled on, and it costs the visitor nothing. The
+    // rise is still theirs on the next visit they actually watch.
+    if (document.hidden) return false;
     try {
       if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
       return localStorage.getItem(RISEN_KEY) !== "1";
@@ -472,21 +486,17 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       // No storage: there was no departure to come back from either.
     }
 
-    // How long they were away, and what to say about it. Published on a
-    // microtask rather than through the frame loop, for the reason the
-    // departure acknowledgement is: the loop does not run for a visitor who
-    // prefers reduced motion, or one whose tab is hidden at load, and this
-    // is a one-shot message that has to survive both.
     // The rise runs once in a visitor's life. Whether it is coming was decided
     // during render — see `startFlat` — so all that is left here is to start
     // its clock, claim it, and queue the caption.
     if (startFlat) {
       riseStartRef.current = performance.now();
-      // Claimed only now that it is being spent. Under reduced motion, and on
-      // any route without a hero, `startFlat` is false and nothing is claimed
-      // — so the same person still meets the rise on a later visit that can
-      // actually show it. Not claiming up front is the whole point: a one-shot
-      // marked as used without being seen is a one-shot nobody ever gets.
+      // Claimed only now that it is being spent. Under reduced motion, on any
+      // route without a hero, and in a tab nobody is looking at, `startFlat` is
+      // false and nothing is claimed — so the same person still meets the rise
+      // on a later visit that can actually show it. Not claiming up front is
+      // the whole point: a one-shot marked as used without being seen is a
+      // one-shot nobody ever gets.
       try {
         localStorage.setItem(RISEN_KEY, "1");
       } catch {
@@ -500,6 +510,11 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       pendingDescentRef.current = !departureSeenRef.current;
     }
 
+    // How long they were away, and what to say about it. Published on a
+    // microtask rather than through the frame loop, for the reason the
+    // departure acknowledgement is: the loop does not run for a visitor who
+    // prefers reduced motion, or one whose tab is hidden at load, and this
+    // is a one-shot message that has to survive both.
     try {
       const lastSeen = Number(localStorage.getItem(LAST_SEEN_KEY));
       localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
@@ -540,7 +555,19 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       advance(system, 380);
       system.era = "stable";
       system.eraElapsed = 0;
-      // Reduced motion: no rise, for the same reason there is no orbit — a
+      // No rise, for the same reason there is no orbit: a still frame of a
+      // flattened system is not a picture of anything.
+      //
+      // This is the entire render path for a reduced-motion visitor, and
+      // nothing downstream covers it. `SystemCanvas` is a descendant, so its
+      // effect runs first and calls `registerRenderer` while `systemRef` is
+      // still null, which guards out the draw there; the frame loop below is
+      // never reached; and `onResize` recomputes dimensions without
+      // repainting. Deleting this line leaves a blank hero, and no check in
+      // the repo can see it — React's development double-mount hides it by
+      // registering a second time after `systemRef` is populated, so it draws
+      // in development and not in production.
+      rendererRef.current?.(system, 1, 1);
       return;
     }
 
@@ -738,6 +765,12 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         hydrationStart += away;
       }
 
+      // The rise gets the same treatment, and for a sharper reason: it runs
+      // once in a visitor's life, so a snap to 1 is not a jump they can watch
+      // again. Both clocks are wall-clock, and neither should count time spent
+      // in a tab nobody was looking at.
+      if (riseStartRef.current) riseStartRef.current += away;
+
       frame = requestAnimationFrame(tick);
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -750,6 +783,13 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     };
     // `startFlat` comes from a lazy initialiser and never changes, so this stays
     // a mount-once effect; it is listed because the effect reads it.
+    //
+    // Listed rather than disabled, because it is a real dependency and saying
+    // so is honest. But it is load-bearing: this effect builds the system,
+    // owns the frame loop and reads every storage key, so anything that ever
+    // made `startFlat` reactive would tear all of that down and rebuild it to
+    // change one render ramp. The invariant that keeps this safe is the lazy
+    // initialiser, not the array.
   }, [startFlat]);
 
   /**
