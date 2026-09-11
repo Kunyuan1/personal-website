@@ -19,25 +19,45 @@ import { drawSophon } from "@/lib/sophon";
 /**
  * The cycle, in seconds, and what happens when.
  *
- * The sphere is fully open for `12/46` — **26%** of the cycle — and on screen at
- * all, counting the opening and closing, for `23.5/46` — **51%**. So for a
- * little under half of every cycle the page carries one speck of light and
- * nothing else.
+ * The first version made the visitor wait 17 seconds for the sphere to open, on
+ * the argument that a rare event is worth more than a guaranteed one. That
+ * argument belongs to the hero, where the simulation runs continuously and
+ * someone is there long enough for rarity to reward them. **It is wrong here.**
+ * A visitor on a 404 is leaving; there is no long tail of attention to pay off,
+ * so rare does not mean precious, it means never seen — and an effect nobody
+ * sees is only cost.
  *
- * A visitor who came here from a dead link and leaves in five seconds may well
- * see nothing move, and that is correct. The alternative — a loop short enough
- * to guarantee they catch it — turns a rare event into an animation playing at
- * them, which is the failure mode of every decorative background ever shipped.
+ * The wait was not the whole of it either. Opening *at* three seconds is not a
+ * sphere at three seconds: the unfolding took 6.5 more, so the thing was not
+ * fully open until nine and a half, by which time most people have gone.
+ * Whatever the wait, the gesture has to finish inside the visit.
+ *
+ * So the first unfolding is not on a timer at all — it is the page arriving.
+ * `FIRST_UNFOLD_AT` phase-shifts the clock so the sky opens about a second
+ * after load, and everything after it is the loop, which stays unhurried
+ * because a repeat is only for someone who stayed.
+ *
+ * The opening is not shortened below about three seconds on purpose. Faster
+ * than that it stops reading as something *opening* and starts reading as a
+ * loading spinner, which is the one thing this page must not look like.
  */
-const CYCLE_SECONDS = 46;
-const OPENS_AT = 17;
-const OPEN_OVER = 6.5;
-const HOLDS_FOR = 12;
-const CLOSES_OVER = 5;
+const CYCLE_SECONDS = 34;
+const OPENS_AT = 18;
+const OPEN_OVER = 3.5;
+const HOLDS_FOR = 9;
+const CLOSES_OVER = 3.5;
 /** When the sphere has finished folding away and nothing changes again. */
 const FOLDED_AT = OPENS_AT + OPEN_OVER + HOLDS_FOR + CLOSES_OVER;
 /** The middle of the held-open stretch: the one frame a still render should be. */
 const HELD_OPEN_AT = OPENS_AT + OPEN_OVER + HOLDS_FOR / 2;
+/**
+ * How long after the page arrives the sky opens.
+ *
+ * Long enough for the page to paint and the eye to land on the object, short
+ * enough that the whole gesture — open, hold, fold — is over inside about
+ * sixteen seconds, and the striking half of it inside five.
+ */
+const FIRST_UNFOLD_AT = 1;
 
 /**
  * One turn of the **wireframe**, in seconds.
@@ -79,7 +99,10 @@ export default function SophonCanvas({ className = "" }: { className?: string })
     let height = 0;
     let frame = 0;
     let sleep: ReturnType<typeof setTimeout> | undefined;
-    const started = performance.now();
+    // The clock starts part-way through the cycle, so the first thing a visitor
+    // sees is the sky opening rather than a wait for it. `unfoldAt` stays a pure
+    // function of elapsed time; only where that time begins has moved.
+    const started = performance.now() - (OPENS_AT - FIRST_UNFOLD_AT) * 1000;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
