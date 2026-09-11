@@ -43,15 +43,6 @@ const DEPARTED_KEY = "trisolaris.departed";
  */
 const LAST_SEEN_KEY = "trisolaris.lastSeen";
 /**
- * That this visitor has already watched the system rise out of the page.
- *
- * A dedicated key rather than inferring a first visit from the absence of the
- * others: the presence beat writes `lastSeen` on load, so "no history" is true
- * for a moment and then is not, and #9's findings are all about exactly that
- * kind of inference being fragile.
- */
-const RISEN_KEY = "trisolaris.risen";
-/**
  * How long away counts as a hibernation rather than a moment's inattention.
  *
  * Half an hour, from the ticket. Well clear of DEHYDRATION_MS, which is the
@@ -74,15 +65,20 @@ const HIBERNATION_MIN_MS = 30 * 60 * 1000;
  */
 const PRESENCE_BEAT_MS = 60000;
 /**
- * How long the descent notice stays up.
+ * How long the descent caption stays up.
  *
- * It goes up as the rise begins rather than after it lands, because it is a
- * caption for something happening on screen and not a report of something
- * that has finished. RISE_MS of that is spent with the system still opening,
- * which leaves about seven seconds to read two sentences — near the collapse
- * notice's allowance, which is the closest in length.
+ * It goes up as the page unfolds rather than after it lands, because it is a
+ * caption for something happening on screen and not a report of something that
+ * has finished. The unfold itself is over in `--unfold-ms`, which leaves most
+ * of this to read two sentences in — near the collapse notice's allowance,
+ * which is the closest in length.
+ *
+ * Not shared with the CSS duration on purpose: one is how long the page takes
+ * to open and the other is how long the words stay legible afterwards, and
+ * tying them together would mean a faster unfold silently became a caption
+ * nobody could finish.
  */
-const RISE_NOTICE_MS = 9000;
+const UNFOLD_NOTICE_MS = 9000;
 
 /** The hibernation notice is three sentences, and needs longer than a death. */
 const HIBERNATION_NOTICE_MS = 11000;
@@ -118,21 +114,6 @@ const HIBERNATION_NOTICE_MS = 11000;
  * `localStorage["trisolaris.civilization"]` to 25 and wait.
  */
 const DEPARTURE_AT = 25;
-/**
- * How long the system takes to rise out of the flat page, in milliseconds.
- *
- * On a first visit the hero begins as a single luminous line — the whole
- * system compressed onto one row, every trail and glow preserved and stacked
- * — and opens into three dimensions. The page is not *showing* the flattened
- * thing; the page **is** it, and the system comes out of it.
- *
- * 2000ms is a starting guess, chosen the way REHYDRATION_MS was not: that one
- * was watched at 900, 1500 and 3000 before it settled at 1500. This wants the
- * same treatment, and is the one number in this feature that cannot be
- * decided before it is seen.
- */
-const RISE_MS = 2000;
-
 /** Most simulation time a single animation frame may catch up on, in seconds. */
 const MAX_CATCHUP = 0.5;
 /** How long the collapse notice stays on screen. */
@@ -153,19 +134,18 @@ const DEHYDRATION_MS = 5000;
 const REHYDRATION_MS = 1500;
 
 /**
- * Draws the system, and takes two render-only ramps along with it.
+ * Draws the system, and takes rehydration progress along with it: 1 whenever
+ * the page is simply running, easing 0 -> 1 on the way back from a
+ * dehydration. Passed rather than stored on the system, because it is a
+ * rendering concern and the physics must not be able to see it.
  *
- * `hydration` is rehydration progress: 1 whenever the page is simply running,
- * easing 0 -> 1 on the way back from a dehydration.
- *
- * `rise` is dimensional: 0 is the system flat, compressed onto a single line,
- * and 1 is the system in three dimensions. It runs once, on a visitor's first
- * ever visit, and is 1 for everyone else.
- *
- * Both are passed rather than stored on the system, because they are
- * rendering concerns and the physics must not be able to see them.
+ * The dimensional unfold is deliberately not here. It is a CSS transform on
+ * the whole page — see `.unfold-root` in globals.css — so the canvas is
+ * squashed as part of the document rather than drawing itself squashed. Doing
+ * both would compose to scaleY(rise * unfold), and the system would open at a
+ * visibly different rate from the text sitting on top of it.
  */
-type Renderer = (system: System, hydration: number, rise: number) => void;
+type Renderer = (system: System, hydration: number) => void;
 
 /**
  * What just became of the current civilisation. A Chaotic Era resolves one way
@@ -269,7 +249,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
    * was gone for good.
    */
   const pendingHibernationRef = useRef<{ awayMs: number; civilizations: number } | null>(null);
-  /** Whether the descent caption is still owed. See `RISE_NOTICE_MS`. */
+  /** Whether the descent caption is still owed. See `UNFOLD_NOTICE_MS`. */
   const pendingDescentRef = useRef(false);
   /**
    * That a departure was acknowledged this session, so the descent caption
@@ -292,53 +272,25 @@ export default function EraProvider({ children }: { children: ReactNode }) {
    */
   const departureSeenRef = useRef(false);
   /**
-   * Whether this visitor has the rise coming, decided during *render*.
+   * Whether this page is unfolding, decided by the blocking script in `<head>`
+   * rather than here.
    *
-   * It cannot wait for an effect. `SystemCanvas` is a child, so its effect —
-   * which registers the renderer and draws one frame immediately — runs before
-   * this component's effects do. Deciding in the load effect meant that first
-   * frame went out at `rise = 1`, and the visitor saw the system fully formed
-   * for a frame before it collapsed flat and rose again.
-   *
-   * A lazy `useState` initialiser runs during render, which is before any
-   * child effect, and runs once. On the server it returns false — there is no
-   * storage to read and nothing is being drawn — and nothing here reaches the
-   * markup, so the two renders cannot disagree about anything the DOM sees.
+   * The unfold has to be in force before the first paint — a decision made
+   * after hydration shows the whole page, then snaps it to a line — so the
+   * script runs before `<body>` is parsed, claims the storage key, and stamps
+   * `data-unfold` on the document element. React's only job is to caption it,
+   * and the one honest way to know whether that caption is owed is to read
+   * what the script decided. Re-deriving it from storage here would always say
+   * no, because the script has already claimed the key.
    */
-  const [startFlat] = useState(() => {
-    if (typeof window === "undefined") return false;
-    // Only where there is a hero to rise. `SystemCanvas` lives in `Hero` and
-    // `Hero` renders on `/` alone, so a first-time visitor arriving on a deep
-    // link would otherwise spend their one rise on a page with no canvas —
-    // the same way landing on /projects used to consume the hibernation gap.
-    // The key is claimed below only if the rise actually starts, so arriving
-    // at /about costs nothing and the next visit to `/` still gets it.
-    if (pathname !== "/") return false;
-    // Nor in a tab that is not being looked at. Effects run in hidden tabs and
-    // animation frames do not, so a middle-clicked link or a restored session
-    // would set the clock, claim the key, and queue the caption against a rAF
-    // that fires whenever the visitor gets round to the tab — by which point
-    // `now - riseStartRef` is thirty seconds, `t` is 15, and the ramp snaps to
-    // 1 on the first painted frame. A fully formed system, a caption
-    // describing a rise nobody saw, and the one-shot spent for good.
-    //
-    // Refusing to start is better than deferring: it is the same rule the
-    // deep-link case above settled on, and it costs the visitor nothing. The
-    // rise is still theirs on the next visit they actually watch.
-    if (document.hidden) return false;
-    try {
-      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
-      return localStorage.getItem(RISEN_KEY) !== "1";
-    } catch {
-      // No storage: no rise. The conservative failure for a one-off effect is
-      // not playing it, rather than playing it on every single visit.
-      return false;
-    }
+  const [unfolding] = useState(() => {
+    if (typeof document === "undefined") return false;
+    // The attribute is set once and never cleared, so this is true for the
+    // whole of the visit the unfold happened on — including when hydration
+    // lands after the animation has already finished, which is exactly when a
+    // caption read off a live animation would have been missed.
+    return document.documentElement.dataset.unfold === "flat";
   });
-  /** See `Renderer`. In a ref, so advancing it costs no React render. */
-  const riseRef = useRef(startFlat ? 0 : 1);
-  /** When the rise began, or 0 if it is not running. Wall clock. */
-  const riseStartRef = useRef(0);
   /** See `Renderer`. In a ref, so advancing it costs no React render. */
   const hydrationRef = useRef(1);
 
@@ -346,7 +298,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     rendererRef.current = fn;
     // Draw immediately so a newly mounted canvas isn't blank until the next
     // frame — which matters when the simulation is paused for reduced motion.
-    if (fn && systemRef.current) fn(systemRef.current, hydrationRef.current, riseRef.current);
+    if (fn && systemRef.current) fn(systemRef.current, hydrationRef.current);
   }, []);
 
   const setStabilised = useCallback((value: boolean) => {
@@ -385,7 +337,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     } catch {
       // Nothing to clear if there was nothing to store.
     }
-    rendererRef.current?.(system, hydrationRef.current, riseRef.current);
+    rendererRef.current?.(system, hydrationRef.current);
   }, []);
 
   /**
@@ -486,29 +438,10 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       // No storage: there was no departure to come back from either.
     }
 
-    // The rise runs once in a visitor's life. Whether it is coming was decided
-    // during render — see `startFlat` — so all that is left here is to start
-    // its clock, claim it, and queue the caption.
-    if (startFlat) {
-      riseStartRef.current = performance.now();
-      // Claimed only now that it is being spent. Under reduced motion, on any
-      // route without a hero, and in a tab nobody is looking at, `startFlat` is
-      // false and nothing is claimed — so the same person still meets the rise
-      // on a later visit that can actually show it. Not claiming up front is
-      // the whole point: a one-shot marked as used without being seen is a
-      // one-shot nobody ever gets.
-      try {
-        localStorage.setItem(RISEN_KEY, "1");
-      } catch {
-        // Nothing to claim it with; it will simply run again next time.
-      }
-      // Captioned from the route effect below, unless a departure already has
-      // the panel — see `departureSeenRef`, which is what that question is
-      // asked through rather than `returnedAfter`. That state is published on
-      // a microtask and is still null at this point, so guarding on it would
-      // have suppressed nothing at all.
-      pendingDescentRef.current = !departureSeenRef.current;
-    }
+    // The unfold is already running — CSS started it before this effect, and
+    // before the first paint. All that is owed here is the caption, and only
+    // if nothing rarer has a claim on the panel: see `departureSeenRef`.
+    pendingDescentRef.current = unfolding && !departureSeenRef.current;
 
     // How long they were away, and what to say about it. Published on a
     // microtask rather than through the frame loop, for the reason the
@@ -562,12 +495,15 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       // nothing downstream covers it. `SystemCanvas` is a descendant, so its
       // effect runs first and calls `registerRenderer` while `systemRef` is
       // still null, which guards out the draw there; the frame loop below is
-      // never reached; and `onResize` recomputes dimensions without
-      // repainting. Deleting this line leaves a blank hero, and no check in
-      // the repo can see it — React's development double-mount hides it by
+      // never reached; and `onResize` used to recompute dimensions without
+      // repainting, which is fixed there but does not make this line
+      // redundant — a canvas that is correctly sized at mount never fires a
+      // resize at all. Deleting it leaves a blank hero, and no check in the
+      // repo can see it: React's development double-mount hides it by
       // registering a second time after `systemRef` is populated, so it draws
-      // in development and not in production.
-      rendererRef.current?.(system, 1, 1);
+      // in development and not in production. Measured that way — a production
+      // build with the setting forced on painted 0 lit pixels.
+      rendererRef.current?.(system, 1);
       return;
     }
 
@@ -696,18 +632,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // The system coming out of the flat page. Same shape as the ramp above,
-      // same smoothstep, and it runs exactly once in a visitor's life.
-      if (riseStartRef.current) {
-        const t = (now - riseStartRef.current) / RISE_MS;
-        if (t >= 1) {
-          riseStartRef.current = 0;
-          riseRef.current = 1;
-        } else {
-          riseRef.current = t * t * (3 - 2 * t);
-        }
-      }
-
       // Publish heat to CSS. Quantised to 1%, so a full fade costs at most a
       // hundred style recalculations rather than one per frame. Scaled by
       // rehydration so a returning visitor warms back up to the era they left
@@ -727,7 +651,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         setStabilisedState(stabilisedRef.current);
       }
 
-      rendererRef.current?.(sys, hydrationRef.current, riseRef.current);
+      rendererRef.current?.(sys, hydrationRef.current);
       frame = requestAnimationFrame(tick);
     };
 
@@ -765,12 +689,6 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         hydrationStart += away;
       }
 
-      // The rise gets the same treatment, and for a sharper reason: it runs
-      // once in a visitor's life, so a snap to 1 is not a jump they can watch
-      // again. Both clocks are wall-clock, and neither should count time spent
-      // in a tab nobody was looking at.
-      if (riseStartRef.current) riseStartRef.current += away;
-
       frame = requestAnimationFrame(tick);
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -781,16 +699,10 @@ export default function EraProvider({ children }: { children: ReactNode }) {
       clearTimeout(noticeTimerRef.current);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-    // `startFlat` comes from a lazy initialiser and never changes, so this stays
-    // a mount-once effect; it is listed because the effect reads it.
-    //
-    // Listed rather than disabled, because it is a real dependency and saying
-    // so is honest. But it is load-bearing: this effect builds the system,
-    // owns the frame loop and reads every storage key, so anything that ever
-    // made `startFlat` reactive would tear all of that down and rebuild it to
-    // change one render ramp. The invariant that keeps this safe is the lazy
-    // initialiser, not the array.
-  }, [startFlat]);
+    // Mount-once. `unfolding` comes from a lazy initialiser and never changes,
+    // and is read by the route effect below rather than by this one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Show the hibernation gap once the visitor is on the route that can render
@@ -822,7 +734,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         setNotice({ kind: "descent" });
         setNoticeVisible(true);
         clearTimeout(noticeTimerRef.current);
-        noticeTimerRef.current = setTimeout(() => setNoticeVisible(false), RISE_NOTICE_MS);
+        noticeTimerRef.current = setTimeout(() => setNoticeVisible(false), UNFOLD_NOTICE_MS);
       });
       return;
     }
