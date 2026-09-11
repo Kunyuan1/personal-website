@@ -97,6 +97,45 @@ It ends by collapsing to a band across the middle and snapping out, which is the
 one thing worth keeping from the version before it: the screen leaves as a
 horizontal line.
 
+## The sequence has an end, and that is structural
+
+`data-intro` is removed when the tear finishes — by `animationend`, with a
+`setTimeout` backstop derived from `--intro-hold` + `--intro-glitch` read out of
+the cascade, so there is no second copy of either number.
+
+An attribute with no end state is one **nothing can be hung off**, because any
+guard attached to it outlives the thing it guards. With an end:
+
+- The scroll pin can be lifted. Without it the page scrolls freely behind three
+  motionless seconds of black, and the tear reveals a visitor halfway down the
+  projects list — with the simulation, the entire reason this is an overlay,
+  off screen.
+- The photon's `infinite` animation stops, because `.intro` goes back to
+  `display: none` and a `display: none` element runs none. Before, it composited
+  a transform and an opacity every 2.8s for the rest of the visit, producing no
+  pixels — the overlay is in the root layout and survives every client-side
+  navigation. Verified: `document.getAnimations()` filtered to `intro*` returns
+  empty afterwards.
+- A curtain that fails to animate is still taken down. One CSS animation
+  completing used to be the only thing between a visitor and a permanently
+  black page, and `animation: none !important` from an extension or user
+  stylesheet is both common and *not* `prefers-reduced-motion`.
+
+The key is claimed at the end rather than at parse time, for the same reason the
+four guards exist: somebody who reloads at 400ms because a black page reads as a
+broken one had not seen it, and should not have spent it. There is no
+re-entrancy to guard — the script runs once per document load.
+
+### Why the scroll pin is not `overflow: hidden`
+
+The lock is the obvious fix and is wrong here. Hiding the root's overflow takes
+the scrollbar's width back, and `scrollbar-gutter: stable` does **not** reserve
+a gutter for `hidden` — measured, the page came out **15px wider while locked**,
+so it would have reflowed its text sideways at the exact instant the tear
+revealed it. Pinning the scroll position changes no layout at all (measured: 0px)
+and catches every input including a scrollbar drag, which `preventDefault` on
+wheel and touch alone would miss.
+
 ## Four ways the one-shot could have been quietly destroyed
 
 Each spends the sequence on somebody who cannot see it, and each fails silently.
@@ -148,6 +187,44 @@ and the entire era colour wash would have been dead. **`tsc` was clean and
 And `check:glyphs` earned its keep again: removing the 降维 caption orphaned two
 glyphs in the font subset, and the enforcing check failed the build until they
 came out. 81 → 79.
+
+## Other findings from the second round
+
+- **`智子` swapped fonts mid-hold.** `.cjk` falls back to `var(--font-display)`,
+  which is Latin-only, so the glyphs landed in a system Song/Ming face and
+  restyled when the subset arrived — two large glyphs visibly changing shape
+  several hundred milliseconds into a motionless black hold, a far bigger
+  artefact than the halo banding this page spent three attempts removing. Now
+  `display=block`. The cost lands where it is cheapest: the subset is requested
+  once per document load and cached after, so the blocking period only bites on
+  the first load of a session — the load with the curtain over it — and the 3s
+  cap matches `--intro-hold` exactly, so a subset that never arrives swaps in
+  masked by the tear.
+- **The skip link sat below the curtain.** A keyboard user pressing Tab on
+  arrival got focus with no visible indicator anywhere for the whole sequence.
+  It now outranks `.intro`, and the two z-indexes live next to each other in
+  `globals.css` because they only mean anything relative to one another.
+- **`onResize` drew a full scene synchronously, for everyone.** Fourteen trail
+  bands per body, the ghost worlds and three radial-gradient suns, inside the
+  handler — continuous while dragging a window edge, and in bursts on mobile as
+  the URL bar collapses, into an already-busy scroll frame. Coalesced into one
+  animation frame. Measuring stays synchronous, because a cleared canvas should
+  not outlive the frame that cleared it.
+- **`#04050a` was a literal one 8-bit step from the page's black.** Invisible
+  today, but the tear cuts slabs of overlay against slabs of page twenty times
+  in 560ms, which is precisely the presentation that would expose drift. Now
+  `var(--void)` — verified identical: both resolve to
+  `oklab(0.122918 0.000266708 -0.0107511)`.
+- **`intro-say` was a flat 1400ms** next to a `--intro-hold` that has already
+  moved three times. Dropping the hold to 1200ms would have left the line still
+  fading in as the tear started. Now derived from it.
+- **`indexOf("intro=1")` was a substring test.** `?nointro=1`, `?intro=10` and
+  `?ref=printro=1` all replayed. Now `URLSearchParams`, and all three correctly
+  refuse.
+- **The glyph string had been re-sorted.** Same 79 glyphs as `main`, reordered —
+  and the glyphs *are* the `text=` parameter of the font URL, so it minted a new
+  stylesheet URL and made every returning visitor re-fetch for nothing. Reverted
+  to `main` byte for byte.
 
 ## What was not verified
 

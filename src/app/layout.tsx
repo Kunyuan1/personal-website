@@ -27,10 +27,24 @@ const description = `${site.role} — ${site.study} at the ${site.school}. Real-
  * Google Fonts can subset a CJK face down to just the glyphs we use, which
  * turns a multi-megabyte font into a couple of kilobytes. next/font doesn't
  * expose the `text` parameter, so this one is requested by hand.
+ *
+ * `display=block`, not `swap`. `.cjk` falls back to `var(--font-display)`,
+ * which is Latin-only, so every CJK glyph on the site lands in a system
+ * Song/Ming face and then restyles when the subset arrives. Usually that is a
+ * minor flicker; on the arrival screen it is two large glyphs visibly changing
+ * shape several hundred milliseconds into a motionless black hold, which is a
+ * far bigger artefact than the halo banding this page already went to three
+ * attempts to remove.
+ *
+ * The cost lands where it is cheapest. This is requested once per document
+ * load and cached after, so the blocking period only bites on the first load
+ * of a session — which is the load with the curtain over it. The block period
+ * is capped at 3s and `--intro-hold` is 3s, so a subset that never arrives
+ * swaps in at the moment the tear starts, masked by it.
  */
 const notoSerifSc = `https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400&text=${encodeURIComponent(
   CJK_GLYPHS,
-)}&display=swap`;
+)}&display=block`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -66,14 +80,16 @@ export const metadata: Metadata = {
 };
 
 /**
- * Decides the arrival sequence, before anything is painted.
+ * Decides the arrival sequence, before anything is painted — and ends it.
  *
- * This runs as a blocking script in `<head>`, which is the whole point of it.
- * The page is statically prerendered and arrives fully formed, so a decision
- * taken after hydration shows the finished page first and then drops a black
- * screen over it — the visitor sees a glitch, and not the intended kind.
- * Running here means the overlay is in the style system before `<body>` is
- * parsed, and the first frame anyone sees is already black.
+ * This runs as a blocking script in `<head>`. The page is statically
+ * prerendered and arrives fully formed, so a decision taken after hydration
+ * shows the finished page first and *then* drops a black screen over it. It
+ * sits after the stylesheet links deliberately: a classic non-async script is
+ * blocked until pending stylesheets load, which is exactly what is wanted
+ * here — those stylesheets also block the first paint, so this has always run
+ * by the time anything is on screen, and it can read `--intro-hold` straight
+ * out of the cascade rather than keeping a second copy of it.
  *
  * It refuses in four cases, each one a case where the sequence would be spent
  * on somebody who cannot see it:
@@ -86,23 +102,65 @@ export const metadata: Metadata = {
  *    off the list of people who have never seen one
  *  - if this browser has already seen it
  *
- * `?intro=1` replays it regardless. Not a debug hook left in by accident: a
- * once-per-lifetime sequence that cannot be replayed is one nobody can judge,
- * and the alternative is clearing site storage by hand every time. It
- * overrides the seen-already check and nothing else.
+ * Scrolling is pinned rather than locked with `overflow: hidden`. The lock is
+ * the obvious fix and it is wrong here: hiding the root's overflow takes the
+ * scrollbar's width back, `scrollbar-gutter: stable` does not reserve a gutter
+ * for `hidden` (measured — the page came out 15px wider while locked), and the
+ * page would therefore reflow its text sideways at the exact instant the tear
+ * reveals it. Pinning the scroll position changes no layout at all and catches
+ * every input, including a scrollbar drag, which `preventDefault` on wheel and
+ * touch alone would miss. Without it a visitor who reads three motionless
+ * seconds as a stuck page and flicks the wheel gets no feedback, and the tear
+ * then reveals them halfway down the projects list — with the simulation, the
+ * entire reason this is an overlay, off screen.
  *
- * It touches nothing React owns — one data attribute on the document element —
- * so there is no hydration mismatch to worry about, and nothing to tear down:
- * the CSS ends with the overlay `visibility: hidden` and inert.
+ * **The attribute is removed at the end, and that is load-bearing.** An
+ * attribute with no end state is one nothing can be hung off, because any
+ * guard attached to it outlives the thing it was guarding. With an end, the
+ * scroll lock in `globals.css` becomes possible, the infinite photon
+ * animation stops because `.intro` goes back to `display: none`, and — the
+ * reason it is belt *and* braces — a curtain that fails to animate is still
+ * taken down. One CSS animation completing used to be the only thing between
+ * a visitor and a permanently black page, and `animation: none !important`
+ * from an extension or a user stylesheet is both common and *not* the same
+ * setting as `prefers-reduced-motion`.
+ *
+ * The key is claimed at the end rather than at parse time, for the same reason
+ * the four guards exist. Somebody who reloads at 400ms because a black page
+ * reads as a broken one had not seen it, and should not have spent it. There
+ * is no re-entrancy to protect against: this runs once per document load.
+ *
+ * `?intro=1` replays it regardless. A once-per-lifetime sequence that cannot
+ * be replayed is one nobody can judge, and the alternative is clearing site
+ * storage by hand.
  */
 const introScript = `(function(){try{
 var d=document.documentElement;
 if(location.pathname!=="/")return;
 if(document.hidden)return;
 if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
-if(location.search.indexOf("intro=1")<0&&localStorage.getItem("trisolaris.intro")==="1")return;
-localStorage.setItem("trisolaris.intro","1");
-d.dataset.intro="on";
+var replay=false;
+try{replay=new URLSearchParams(location.search).get("intro")==="1";}catch(e){}
+if(!replay&&localStorage.getItem("trisolaris.intro")==="1")return;
+d.setAttribute("data-intro","on");
+var stop=function(e){e.preventDefault();},pin=function(){window.scrollTo(0,0);};
+window.addEventListener("wheel",stop,{passive:false});
+window.addEventListener("touchmove",stop,{passive:false});
+window.addEventListener("scroll",pin);
+var cs=getComputedStyle(d),done=false;
+var ms=function(n){var v=cs.getPropertyValue(n).trim();
+return v.slice(-2)==="ms"?parseFloat(v):v.slice(-1)==="s"?parseFloat(v)*1000:0;};
+var end=function(){if(done)return;done=true;
+document.removeEventListener("animationend",onEnd,true);
+window.removeEventListener("wheel",stop);
+window.removeEventListener("touchmove",stop);
+window.removeEventListener("scroll",pin);
+d.removeAttribute("data-intro");
+try{localStorage.setItem("trisolaris.intro","1");}catch(e){}};
+var onEnd=function(e){if(e.animationName==="intro-tear")end();};
+document.addEventListener("animationend",onEnd,true);
+var total=ms("--intro-hold")+ms("--intro-glitch");
+setTimeout(end,(total||5000)+1500);
 }catch(e){}})();`;
 
 export const viewport: Viewport = {
@@ -129,7 +187,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col bg-void text-ink">
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:bg-ink focus:px-4 focus:py-2 focus:text-sm focus:text-void"
+          className="skip-link sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:bg-ink focus:px-4 focus:py-2 focus:text-sm focus:text-void"
         >
           Skip to content
         </a>
