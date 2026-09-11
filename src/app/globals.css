@@ -180,126 +180,217 @@
   }
 }
 
-/* 降维 — the page arrives as one flattened plane and opens into three
-   dimensions, once, on a visitor's first ever visit.
+/* The arrival. A black screen with a single photon on it, a line from the
+   thing watching, and then a glitch that tears the screen off the page.
 
-   The decision is made by a blocking script in <head>, not by React. It has to
-   be in force before the first paint: anything decided after hydration shows
-   the finished page for a few hundred milliseconds and then snaps it to a
-   line, which is a glitch rather than an effect. The script stamps
-   `data-unfold` on the document element; everything below keys off that.
+   An overlay, not a transform on the document. Every earlier version of this
+   scaled the real page and every bug came from that: the canvas measured
+   itself squashed and allocated a one-pixel buffer, and a finished transform
+   stayed a containing block for fixed-position children. Nothing here touches
+   the page at all — it runs underneath, correctly sized, and is already alive
+   when the overlay goes.
 
-   Only the document scales. `.era-wash`, the notice panel and the departure
-   panel sit outside `.unfold-root` on purpose — the ground the page is pressed
-   onto should not be pressed onto itself, and the caption has to stay readable
-   while the thing it describes is still a line. */
+   Set by a blocking script in <head>, because a decision taken after hydration
+   shows the finished page and *then* covers it. */
 :root {
-  /* How long the page sits there as a line before anything happens. This is
-     the effect — a horizontal line on a black screen, holding long enough that
-     you are certain it is deliberate rather than a rendering fault. */
-  --unfold-hold: 2000ms;
-  /* How long the unravelling itself takes, once the hold is over. */
-  --unfold-ms: 1200ms;
+  /* How long the photon holds the screen before anything happens. */
+  --intro-hold: 2200ms;
+  /* The tear itself. Short — a glitch that outstays its welcome is a
+     transition, and reads as broken rather than deliberate. */
+  --intro-glitch: 560ms;
 }
 
-.unfold-root {
-  /* Half a viewport down from the document's top, which is where the middle of
-     the screen is on a page that has just loaded and cannot have been
-     scrolled. A percentage would measure against the document instead, and put
-     the line below the fold on any page taller than the viewport. */
-  transform-origin: 50% 50vh;
-  transform-origin: 50% 50svh;
-}
-
-html[data-unfold="flat"] .unfold-root {
-  /* `backwards`, not `both`, and no standing `transform` declaration to go
-     with it. The from-state applies from the first style resolution — the
-     attribute is stamped before <body> is parsed, so there is no frame in
-     which this paints unflattened — and once the animation is over the
-     element keeps *no* transform at all.
-     
-     That matters beyond tidiness. A finished `forwards` fill leaves
-     `scaleY(1)` in place, and an identity transform is still a containing
-     block for any `position: fixed` descendant. The attribute survives
-     client-side navigation, so a visitor who unfolded on `/` and then hit a
-     404 would have taken that containing block with them. Ending with no
-     transform means nothing has to be cleaned up, and nothing is left to
-     depend on an event firing. */
-  /* A symmetric ease-in-out, chosen by measuring rather than by taste. The
-     obvious pick for "opening" is a strong ease-out, but measured across the
-     timeline cubic-bezier(0.16, 1, 0.3, 1) was half open at 10% of the
-     duration and 97% open at half of it — the visible motion was over in
-     about 400ms and the rest was imperceptible creep from 0.97 to 1. It read
-     as a snap, and no amount of raising --unfold-ms would have fixed it.
-
-     This one runs 0.02 / 0.12 / 0.50 / 0.88 / 0.98 at 10/25/50/75/90% of the
-     duration: the page holds as a line long enough to be read as one, opens
-     through the middle, and settles. */
-  animation: unfold-page var(--unfold-ms) cubic-bezier(0.45, 0, 0.55, 1)
-    var(--unfold-hold) backwards;
-}
-
-/* Not scaled to nothing. A zero scale is singular — the compositor is entitled
-   to drop the layer rather than draw a line — and it would take the page's
-   light with it. This is thin enough to read as one row and still be drawn. */
-@keyframes unfold-page {
-  from {
-    transform: scaleY(0.0016);
-  }
-  to {
-    transform: scaleY(1);
-  }
-}
-
-/* The line itself, which is a real element rather than anything the canvas
-   draws: the canvas is inside `.unfold-root` and is being squashed along with
-   everything else, so a line painted in there would be squashed too. */
-.unfold-line {
+.intro {
+  display: none;
   position: fixed;
-  left: 0;
-  right: 0;
-  top: 50svh;
-  height: 2px;
-  margin-top: -1px;
-  z-index: 30;
-  pointer-events: none;
-  opacity: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(188, 211, 232, 0.35) 18%,
-    rgba(226, 238, 252, 0.95) 50%,
-    rgba(188, 211, 232, 0.35) 82%,
-    transparent 100%
+  inset: 0;
+  z-index: 90;
+  background: #04050a;
+  /* Not centred with flex on the photon alone: the words need to sit under it
+     without moving it off the optical centre. */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.75rem;
+}
+
+html[data-intro="on"] .intro {
+  display: flex;
+  animation: intro-tear var(--intro-glitch) steps(1, end) var(--intro-hold) forwards;
+}
+
+/* A point of light, not a sphere. The 404 has the sophon already unfolded; a
+   photon on the way here has not been unfolded yet, so it is the one thing it
+   can be — a proton, lit, with nothing around it. */
+.intro-photon {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #ffffff 0%,
+    #dbe8ff 45%,
+    rgba(188, 211, 232, 0) 72%
   );
+  /* Only the tight core. A third, very wide shadow used to carry the outer
+     halo and it banded — a 130px blur at 0.22 alpha over near-black steps
+     through too few 8-bit values, and the seams showed as a soft rectangle
+     around the light. On a black screen held for two seconds that is the
+     first thing the eye finds. */
   box-shadow:
-    0 0 24px rgba(188, 211, 232, 0.5),
-    0 0 72px rgba(188, 211, 232, 0.28);
+    0 0 14px 3px rgba(214, 230, 246, 0.9),
+    0 0 46px 10px rgba(150, 190, 240, 0.42);
+  animation: intro-breathe 2.8s ease-in-out infinite;
 }
 
-html[data-unfold="flat"] .unfold-line {
-  /* Lit for the whole hold — the animation has a delay and no `backwards`
-     fill, so during the hold the element simply uses this value. */
-  opacity: 1;
-  /* `forwards` is load-bearing, not habit. Without it the animated value is
-     dropped when the animation ends and `opacity: 1` above comes straight back,
-     relighting the line across a page that has finished opening.
-
-     Linear, so the fade is even. The page's own easing belongs to the page;
-     borrowing it here bent the opacity ramp towards the start. */
-  animation: unfold-line var(--unfold-ms) linear var(--unfold-hold) forwards;
+/* The outer halo, as a gradient with enough stops to fall off smoothly rather
+   than as one enormous blur. */
+.intro-photon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 520px;
+  height: 520px;
+  margin: -260px 0 0 -260px;
+  border-radius: 50%;
+  pointer-events: none;
+  /* Deliberately faint and wide. At 0.2 alpha across 360px this read as a
+     disc with an edge — a worse artefact than the banding it replaced. The
+     glow has to be gone long before the gradient's own boundary, so the peak
+     is low and the stops decay quickly. */
+  background: radial-gradient(
+    circle,
+    rgba(132, 176, 236, 0.072) 0%,
+    rgba(126, 169, 230, 0.052) 12%,
+    rgba(120, 162, 224, 0.034) 26%,
+    rgba(112, 154, 216, 0.019) 42%,
+    rgba(104, 146, 208, 0.009) 58%,
+    rgba(96, 138, 200, 0.0035) 75%,
+    rgba(88, 130, 192, 0) 100%
+  );
 }
 
-/* Out across the unravelling. It is what the page was pressed onto, so it has
-   nothing left to do once the page is off it, and it should not still be lying
-   across a page that has opened. The holding is done by the delay now, not by
-   flat keyframes at the start. */
-@keyframes unfold-line {
-  from {
+.intro-words {
+  margin: 0;
+  max-width: 26rem;
+  padding: 0 1.5rem;
+  text-align: center;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.9;
+  animation: intro-say 1400ms ease-out both;
+}
+
+.intro-cjk {
+  display: block;
+  font-size: 15px;
+  letter-spacing: 0.35em;
+  /* The trailing letter-spacing pushes it off centre by half a space. */
+  text-indent: 0.35em;
+  color: rgba(188, 211, 232, 0.85);
+}
+
+.intro-say {
+  display: block;
+  margin-top: 0.9rem;
+  letter-spacing: 0.08em;
+  color: rgba(233, 236, 244, 0.55);
+}
+
+/* Alive, but barely. A point of light that sits perfectly still reads as a
+   dead pixel. */
+@keyframes intro-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.22);
     opacity: 1;
   }
-  to {
+}
+
+/* The words arrive after the photon rather than with it, so the photon is
+   what you see first and the line is what it then says. */
+@keyframes intro-say {
+  0%,
+  22% {
     opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The tear.
+
+   `steps(1, end)` is what makes this a glitch rather than a slide: every
+   keyframe snaps to its value and holds, so nothing is ever interpolated and
+   the screen jumps between discrete broken states.
+
+   `clip-path: inset()` cuts horizontal slabs out of the black, and the page —
+   which has been sitting there the whole time, fully rendered — shows through
+   the gaps. It flickers back to whole twice on the way, because a tear that
+   only ever loses ground reads as a wipe.
+
+   It ends by collapsing to a band across the middle and snapping out, which is
+   the one thing worth keeping from the version this replaces: the screen
+   leaves as a horizontal line. */
+@keyframes intro-tear {
+  0% {
+    clip-path: inset(0 0 0 0);
+  }
+  8% {
+    clip-path: inset(0 0 58% 0);
+    transform: translate3d(-7px, 0, 0);
+  }
+  14% {
+    clip-path: inset(41% 0 0 0);
+    transform: translate3d(6px, 0, 0);
+  }
+  20% {
+    clip-path: inset(0 0 0 0);
+    transform: translate3d(-2px, 0, 0);
+  }
+  30% {
+    clip-path: inset(0 0 74% 0);
+    transform: translate3d(9px, 0, 0);
+  }
+  40% {
+    clip-path: inset(61% 0 14% 0);
+    transform: translate3d(-8px, 0, 0);
+  }
+  50% {
+    clip-path: inset(18% 0 52% 0);
+    transform: translate3d(5px, 0, 0);
+  }
+  60% {
+    clip-path: inset(0 0 0 0);
+    transform: translate3d(-4px, 0, 0);
+    opacity: 0.55;
+  }
+  70% {
+    clip-path: inset(81% 0 7% 0);
+    transform: translate3d(7px, 0, 0);
+    opacity: 1;
+  }
+  80% {
+    clip-path: inset(34% 0 44% 0);
+    transform: translate3d(-3px, 0, 0);
+  }
+  90% {
+    clip-path: inset(48% 0 48% 0);
+    transform: none;
+  }
+  100% {
+    clip-path: inset(50% 0 50% 0);
+    opacity: 0;
+    visibility: hidden;
   }
 }
 
