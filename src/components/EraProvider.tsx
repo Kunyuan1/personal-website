@@ -73,6 +73,17 @@ const HIBERNATION_MIN_MS = 30 * 60 * 1000;
  * absence this is here to measure.
  */
 const PRESENCE_BEAT_MS = 60000;
+/**
+ * How long the descent notice stays up.
+ *
+ * It goes up as the rise begins rather than after it lands, because it is a
+ * caption for something happening on screen and not a report of something
+ * that has finished. RISE_MS of that is spent with the system still opening,
+ * which leaves about seven seconds to read two sentences — near the collapse
+ * notice's allowance, which is the closest in length.
+ */
+const RISE_NOTICE_MS = 9000;
+
 /** The hibernation notice is three sentences, and needs longer than a death. */
 const HIBERNATION_NOTICE_MS = 11000;
 /**
@@ -175,7 +186,15 @@ export type Notice =
    * open, which is more interesting than an illusion that has to be
    * maintained.
    */
-  | { kind: "hibernation"; awayMs: number; civilizations: number };
+  | { kind: "hibernation"; awayMs: number; civilizations: number }
+  /**
+   * The system coming out of the flattened page, on a first visit.
+   *
+   * Carries nothing. The other three report an outcome the visitor could not
+   * have predicted; this one names a thing they are watching happen, and the
+   * only fact in it is that it is happening.
+   */
+  | { kind: "descent" };
 
 type EraContextValue = {
   era: Era;
@@ -250,6 +269,26 @@ export default function EraProvider({ children }: { children: ReactNode }) {
    * was gone for good.
    */
   const pendingHibernationRef = useRef<{ awayMs: number; civilizations: number } | null>(null);
+  /** Whether the descent caption is still owed. See `RISE_NOTICE_MS`. */
+  const pendingDescentRef = useRef(false);
+  /**
+   * That a departure was acknowledged this session, so the descent caption
+   * knows to stand down.
+   *
+   * A ref rather than the `skipHibernation` local it sits beside, because that
+   * local is recomputed per mount and this question is not. Reading a
+   * departure *consumes* it — DEPARTED_KEY is removed in the same breath — so
+   * under React's development double-mount the second pass finds no departure,
+   * recomputes `skipHibernation` as false, and re-arms the caption that the
+   * first pass had correctly suppressed. Measured: the panel came up reading
+   * 降维 with the departure acknowledgement already on the page behind it.
+   *
+   * Refs survive that remount, which is the whole reason this is one. Not a
+   * development-only concern dressed up as a real one: an effect that only
+   * behaves when it runs exactly once is an effect with a latent bug in it,
+   * and this is the cheapest possible way not to have written one.
+   */
+  const departureSeenRef = useRef(false);
   /**
    * Whether this visitor has the rise coming, decided during *render*.
    *
@@ -266,6 +305,13 @@ export default function EraProvider({ children }: { children: ReactNode }) {
    */
   const [startFlat] = useState(() => {
     if (typeof window === "undefined") return false;
+    // Only where there is a hero to rise. `SystemCanvas` lives in `Hero` and
+    // `Hero` renders on `/` alone, so a first-time visitor arriving on a deep
+    // link would otherwise spend their one rise on a page with no canvas —
+    // the same way landing on /projects used to consume the hibernation gap.
+    // The key is claimed below only if the rise actually starts, so arriving
+    // at /about costs nothing and the next visit to `/` still gets it.
+    if (pathname !== "/") return false;
     try {
       if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
       return localStorage.getItem(RISEN_KEY) !== "1";
@@ -420,6 +466,7 @@ export default function EraProvider({ children }: { children: ReactNode }) {
         // changelog rather than as either of the things they are — and the
         // departure is the rarer and more specific of the two.
         skipHibernation = true;
+        departureSeenRef.current = true;
       }
     } catch {
       // No storage: there was no departure to come back from either.
@@ -432,14 +479,25 @@ export default function EraProvider({ children }: { children: ReactNode }) {
     // is a one-shot message that has to survive both.
     // The rise runs once in a visitor's life. Whether it is coming was decided
     // during render — see `startFlat` — so all that is left here is to start
-    // its clock and to claim it, which happens even under reduced motion so
-    // that the same person does not meet the animation later on a machine
-    // without that setting.
-    if (startFlat) riseStartRef.current = performance.now();
-    try {
-      localStorage.setItem(RISEN_KEY, "1");
-    } catch {
-      // Nothing to claim it with; `startFlat` already returned false.
+    // its clock, claim it, and queue the caption.
+    if (startFlat) {
+      riseStartRef.current = performance.now();
+      // Claimed only now that it is being spent. Under reduced motion, and on
+      // any route without a hero, `startFlat` is false and nothing is claimed
+      // — so the same person still meets the rise on a later visit that can
+      // actually show it. Not claiming up front is the whole point: a one-shot
+      // marked as used without being seen is a one-shot nobody ever gets.
+      try {
+        localStorage.setItem(RISEN_KEY, "1");
+      } catch {
+        // Nothing to claim it with; it will simply run again next time.
+      }
+      // Captioned from the route effect below, unless a departure already has
+      // the panel — see `departureSeenRef`, which is what that question is
+      // asked through rather than `returnedAfter`. That state is published on
+      // a microtask and is still null at this point, so guarding on it would
+      // have suppressed nothing at all.
+      pendingDescentRef.current = !departureSeenRef.current;
     }
 
     try {
@@ -707,7 +765,28 @@ export default function EraProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (pathname !== "/") return;
     const pending = pendingHibernationRef.current;
-    if (!pending) return;
+    if (!pending) {
+      // The descent caption, which loses to both of the others.
+      //
+      // By construction it cannot collide with either: a hibernation needs a
+      // previous visit to have written `lastSeen`, and a departure needs one
+      // to have reached DEPARTURE_AT, and neither is true of a visitor who
+      // has never been here. That is an argument, not a guarantee — storage
+      // can be cleared a key at a time — so the precedence is written down
+      // rather than assumed. It goes this way round because the other two
+      // are the only account anyone gets of something they missed, while
+      // this one is a label for a thing happening in front of them.
+      if (!pendingDescentRef.current) return;
+      pendingDescentRef.current = false;
+      queueMicrotask(() => {
+        setNotice({ kind: "descent" });
+        setNoticeVisible(true);
+        clearTimeout(noticeTimerRef.current);
+        noticeTimerRef.current = setTimeout(() => setNoticeVisible(false), RISE_NOTICE_MS);
+      });
+      return;
+    }
+    pendingDescentRef.current = false;
     pendingHibernationRef.current = null;
     queueMicrotask(() => {
       setNotice({ kind: "hibernation", ...pending });

@@ -87,6 +87,9 @@ export default function EraNotice() {
   // A hibernation takes neither colour. It is the one notice here that is not
   // reporting an outcome the animation just showed — it is about the visitor.
   const dormant = shown?.kind === "hibernation";
+  // Nor does the descent, for the opposite reason: it is the only notice here
+  // that is about something the animation is *still* showing.
+  const descending = shown?.kind === "descent";
 
   // The notice narrates the system in the hero, and only `/` renders Hero.
   // Everywhere else it was a panel describing a simulation with nothing on
@@ -104,10 +107,25 @@ export default function EraNotice() {
       {shown && (
         <p
           className={`max-w-md border bg-void/90 px-5 py-3.5 text-center font-mono text-[11px] leading-relaxed text-muted backdrop-blur-sm ${
-            dormant ? "border-line-bright" : died ? "border-sun-c/30" : "border-sun-b/30"
+            dormant || descending
+              ? "border-line-bright"
+              : died
+                ? "border-sun-c/30"
+                : "border-sun-b/30"
           }`}
         >
-          {shown.kind === "hibernation" ? (
+          {shown.kind === "descent" ? (
+            <>
+              <span className="cjk block text-muted">降维</span>
+              <span className="mt-2 block">
+                Everything here began flat — the whole system pressed onto a single
+                line — and has just been given its dimensions back.
+              </span>
+              <span className="mt-2 block text-faint">
+                In the books, this only ever runs the other way.
+              </span>
+            </>
+          ) : shown.kind === "hibernation" ? (
             <>
               <span className="cjk block text-muted">冬眠</span>
               <span className="mt-2 block">
