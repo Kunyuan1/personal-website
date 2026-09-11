@@ -193,8 +193,12 @@
    Set by a blocking script in <head>, because a decision taken after hydration
    shows the finished page and *then* covers it. */
 :root {
-  /* How long the photon holds the screen before anything happens. */
-  --intro-hold: 2200ms;
+  /* How long the photon holds the screen before anything happens.
+     Four seconds is a long time to show somebody nothing, and is the point:
+     it has to stop reading as a loading state and start reading as something
+     looking back. The words land inside the first 1.4s, so the rest is the
+     photon alone. */
+  --intro-hold: 4000ms;
   /* The tear itself. Short — a glitch that outstays its welcome is a
      transition, and reads as broken rather than deliberate. */
   --intro-glitch: 560ms;

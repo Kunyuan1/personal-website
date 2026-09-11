@@ -7,7 +7,7 @@ every route still `○ (Static)`.
 
 On a visitor's first ever visit the site opens on a black screen with a single
 photon on it, and one line from the thing holding the photon. It sits there for
-2.2 seconds. Then the screen tears itself off the page in a glitch, collapses to
+four seconds. Then the screen tears itself off the page in a glitch, collapses to
 a band across the middle, and snaps out.
 
 > 智子
@@ -65,7 +65,7 @@ with nothing around it. Same object, two states, which is how the book has it.
 
 The outer halo is a gradient rather than a third box-shadow. A 130px blur at
 0.22 alpha over near-black steps through too few 8-bit values and the seams show
-as a soft rectangle around the light — on a black screen held for two seconds
+as a soft rectangle around the light — on a black screen held for four seconds
 that is the first thing the eye finds. The first gradient replacement was worse:
 0.2 alpha across 360px read as a *disc with an edge*, a bigger artefact than the
 banding it replaced. It is now 0.072 peak across 520px, so the glow is gone long
@@ -155,6 +155,6 @@ came out. 81 → 79.
   `document.hidden: true` during loads, and hidden tabs do not advance CSS
   animations. Every frame above comes from seeking the real animations with the
   Web Animations API and screenshotting — exact, but not the same as watching
-  it. `--intro-hold` (2200ms) and `--intro-glitch` (560ms) both want a human.
+  it. `--intro-hold` (4000ms) and `--intro-glitch` (560ms) both want a human.
 - **`prefers-reduced-motion` through the real media query**, rather than by
   forcing the branch in a production build.
