@@ -357,19 +357,31 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     // once, by the provider's own draw call, and a single resize after that
     // left them with a blank canvas until they navigated away and back.
     //
-    // `registerRenderer` already draws immediately when a system exists, which
-    // is the same path that covers the mount case: the first `resize()` can
-    // measure a canvas the layout has not placed yet, so the provider's draw
-    // lands in a 1x1 buffer that the first real resize then throws away.
+    // Coalesced into one animation frame rather than drawn inside the handler.
+    // A full scene is fourteen trail bands per body, the ghost worlds and
+    // three radial-gradient suns; dragging a desktop window edge fires resize
+    // continuously, and on mobile the URL bar collapsing fires it in bursts
+    // into an already-busy scroll frame. Measuring stays synchronous, because
+    // the cleared canvas should not outlive the frame that cleared it.
+    let repaint = 0;
     const onResize = () => {
       resize();
-      registerRenderer(render);
+      if (repaint) return;
+      repaint = requestAnimationFrame(() => {
+        repaint = 0;
+        // `registerRenderer` draws immediately when a system exists, which is
+        // also what covers the mount case: the first `resize()` can measure a
+        // canvas the layout has not placed yet, and the provider's draw then
+        // lands in a 1x1 buffer that the first real resize throws away.
+        registerRenderer(render);
+      });
     };
     window.addEventListener("resize", onResize);
 
     return () => {
       registerRenderer(null);
       window.removeEventListener("resize", onResize);
+      cancelAnimationFrame(repaint);
     };
   }, [registerRenderer]);
 
