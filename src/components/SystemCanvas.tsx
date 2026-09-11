@@ -37,9 +37,9 @@ const FLAT = 0.015;
  * So the line is drawn, rather than hoped for. It is not a trick standing in
  * for the squashed system: it is the horizon that system has been pressed
  * onto, and it fades as the system leaves it. With it, the flat state peaks at
- * 174 against a ground of 6, and brightens monotonically across the ramp —
- * 174, 189, 228, 244, 252, 255 — so the line opens into the scene rather than
- * dipping through a dim middle.
+ * 184 against a ground of 6, and brightens monotonically across the ramp —
+ * 184, 241, 255 — so the line opens into the scene rather than dipping through
+ * a dim middle.
  *
  * The ticket forbids a white-out, and compressing the scene is a real way to
  * cause one: every trail and glow is stacked additively onto a handful of rows.
@@ -48,6 +48,11 @@ const FLAT = 0.015;
  * danger is concentrated at rise 0, where the scene is compressed 5x harder
  * than at 0.1: a white horizon there measures 0.464%, ninety times this one.
  * Peak luminance cannot see any of that — it reads 255 either way.
+ *
+ * Every number above depends on the `globalCompositeOperation` set at the draw
+ * site below, and an earlier version of it measured 174/0.005% while silently
+ * compositing `source-over` — occluding 78% of the system it claimed to be the
+ * resting place of. Re-measure this block if that line moves.
  */
 const HORIZON_UNTIL = 0.45;
 
@@ -390,16 +395,38 @@ export default function SystemCanvas({ className = "" }: { className?: string })
       // The horizon, drawn outside the transform because it is already flat —
       // scaling it would collapse the one thing whose job is to be seen.
       //
+      // Additive, and set here rather than inherited. The `save()` above is
+      // taken *before* the scene sets `lighter`, so `restore()` puts
+      // `source-over` back and this block would otherwise paint over the
+      // squashed system instead of adding to it — which is the difference
+      // between a horizon the system has been pressed onto and an opaque
+      // stand-in hiding the fact that it is dim. Stated explicitly because
+      // moving that `save()` two lines down is a natural tidy-up, and the
+      // silent result would be a horizon that composites the other way.
+      ctx.globalCompositeOperation = "lighter";
+
       // An ellipse rather than a band across the full width: the light has
-      // been pressed into the middle of the frame, so it should fall off
-      // towards the edges rather than run out of them.
+      // been pressed into the part of the frame the system occupies, so it
+      // should fall off towards the edges rather than run out of them.
       if (rise < HORIZON_UNTIL) {
         const t = 1 - rise / HORIZON_UNTIL;
         const strength = t * t * (3 - 2 * t);
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.scale(1, 0.035 + rise * 0.4);
-        const reach = width * 0.42;
+        // Sized to the nearer edge, not to the width. `centerX` is 0.73 of the
+        // width on the desktop layout, where a reach of 0.42w put the right
+        // edge at 0.64 of the gradient — still carrying about alpha 0.16 of
+        // near-white when the canvas cut it off. A hard vertical line down one
+        // side, held for the first 0.45 of the rise, while the other side
+        // faded out properly: the exact failure the paragraph above claims the
+        // ellipse was chosen to avoid.
+        //
+        // Measured: with 0.42w the last column of the canvas reached luminance
+        // 41 against a ground of 6, fading through 36 and 15 as the horizon
+        // did. Sized to the nearer edge it is 6 — the ground — at every point
+        // of the ramp.
+        const reach = Math.min(centerX, width - centerX);
         const line = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
         line.addColorStop(0, `rgba(214, 230, 246, ${0.78 * strength})`);
         line.addColorStop(0.35, `rgba(188, 211, 232, ${0.30 * strength})`);
@@ -417,7 +444,22 @@ export default function SystemCanvas({ className = "" }: { className?: string })
     resize();
     registerRenderer(render);
 
-    const onResize = () => resize();
+    // Re-register rather than only re-measuring. `resize()` assigns
+    // `canvas.width`, and assigning it *clears the canvas* even when the value
+    // is unchanged — so every resize blanks the hero and something has to
+    // paint it again. The frame loop does that on its next tick, but a
+    // reduced-motion visitor has no frame loop: their hero is painted exactly
+    // once, by the provider's own draw call, and a single resize after that
+    // left them with a blank canvas until they navigated away and back.
+    //
+    // `registerRenderer` already draws immediately when a system exists, which
+    // is the same path that covers the mount case: the first `resize()` can
+    // measure a canvas the layout has not placed yet, so the provider's draw
+    // lands in a 1x1 buffer that the first real resize then throws away.
+    const onResize = () => {
+      resize();
+      registerRenderer(render);
+    };
     window.addEventListener("resize", onResize);
 
     return () => {
