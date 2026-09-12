@@ -9,7 +9,7 @@ export const skillGroups: SkillGroup[] = [
   {
     label: "Languages",
     cjk: "语言",
-    items: ["Python", "JavaScript", "TypeScript", "C", "SQL", "HTML", "CSS"],
+    items: ["Python", "Java", "JavaScript", "TypeScript", "C", "SQL", "HTML", "CSS"],
   },
   {
     label: "Frameworks",
