@@ -16,7 +16,7 @@ export default function ProjectsPage() {
         cjk="档案"
         eyebrow="The Archive"
         title="Projects"
-        intro="Four things built to answer a question I had. Every one is on GitHub if you'd rather read the code than take my word for it."
+        intro="Five things built to answer a question I had. Every one is on GitHub if you'd rather read the code than take my word for it."
       />
 
       <div className="mx-auto max-w-6xl px-6 py-20 sm:py-28">

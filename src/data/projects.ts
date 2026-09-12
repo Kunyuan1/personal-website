@@ -40,6 +40,24 @@ export type Project = {
 export const projects: Project[] = [
   {
     num: "01",
+    slug: "clipfarm",
+    title: "ClipFarm",
+    kind: "Computer Vision Pipeline · 2026",
+    summary:
+      "Three hours of volleyball footage is worth about ninety seconds. This finds which ninety.",
+    description:
+      "Upload a full game and get back a filterable clip library instead of a video nobody rewatches. A Celery pipeline tracks the ball to find rallies, scores each one on crowd reaction and rally shape, refines the action label with pose estimation, then cuts the survivors with FFmpeg and tags them by action type. Ball tracking and pose both run on serverless GPUs, and tracking results are cached by video hash so a re-run costs nothing.",
+    highlights: [
+      "Ball tracking as the primary path, because pose-first detection breaks on the occlusion a real gym produces",
+      "Rallies scored on crowd audio and rally shape, so only the ones above threshold are worth a GPU pass",
+      "Browser uploads go straight to object storage on a presigned URL — the API never handles the video",
+    ],
+    tech: ["Next.js", "FastAPI", "Celery", "YOLOv8", "OpenCV", "Postgres"],
+    github: "https://github.com/ClipFarmVB/ClipFarm",
+    images: [],
+  },
+  {
+    num: "02",
     slug: "imposter",
     title: "Imposter",
     kind: "Real-Time Multiplayer · 2026",
@@ -57,7 +75,7 @@ export const projects: Project[] = [
     images: [],
   },
   {
-    num: "02",
+    num: "03",
     slug: "medi-cal",
     title: "Medi-Cal Scheduling",
     kind: "Full-Stack Web App · 2024",
@@ -81,7 +99,7 @@ export const projects: Project[] = [
     ],
   },
   {
-    num: "03",
+    num: "04",
     slug: "erics-mansion",
     title: "Eric's Mansion",
     kind: "Game Development · 2024",
@@ -103,7 +121,7 @@ export const projects: Project[] = [
     ],
   },
   {
-    num: "04",
+    num: "05",
     slug: "worst-birthday",
     title: "Worst Birthday UI",
     kind: "UI Experiment · 2024",

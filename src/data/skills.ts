@@ -14,11 +14,22 @@ export const skillGroups: SkillGroup[] = [
   {
     label: "Frameworks",
     cjk: "框架",
-    items: ["React", "Next.js", "Django", "Node.js", "Pygame", "Tailwind CSS"],
+    items: ["React", "Next.js", "FastAPI", "Django", "Node.js", "Pygame", "Tailwind CSS"],
   },
   {
     label: "Tools",
     cjk: "工具",
-    items: ["Git", "Vite", "WebSockets", "SQLite", "Vercel", "Linux"],
+    items: [
+      "Git",
+      "Docker",
+      "Celery",
+      "OpenCV",
+      "PostgreSQL",
+      "WebSockets",
+      "Vite",
+      "SQLite",
+      "Vercel",
+      "Linux",
+    ],
   },
 ];

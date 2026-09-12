@@ -41,17 +41,17 @@ export default function AboutPage() {
             <p className="text-base leading-relaxed text-muted">
               I study computer science and statistics at the University of Toronto
               Mississauga, and most of what I build draws on both: software
-              development and artificial intelligence. Simulation, systems that
-              have to keep several people in step at once, and interfaces that make a
-              hard thing feel easy.
+              development and artificial intelligence. Computer vision that has to
+              hold up on real footage, systems that keep several people in step at
+              once, and interfaces that make a hard thing feel easy.
             </p>
 
             <p className="text-base leading-relaxed text-muted">
-              Most projects start as a question I want answered. What makes a game
-              loop worth replaying. What a scheduling system looks like when
-              it&apos;s actually designed around the patient. How bad an interface
-              can get before it stops being funny — that one turned into a real
-              project.
+              Most projects start as a question I want answered. Whether a model can
+              pick the ninety seconds worth keeping out of a three-hour game. What a
+              scheduling system looks like when it&apos;s actually designed around the
+              patient. How bad an interface can get before it stops being funny —
+              that one turned into a real project.
             </p>
 
             <p className="text-base leading-relaxed text-muted">
