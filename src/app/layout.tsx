@@ -18,8 +18,31 @@ const display = Instrument_Serif({
 const sans = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
 
-// TODO(kunyuan): point this at your real domain once Vercel is wired up.
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://kunyuan.vercel.app";
+/**
+ * The site's own origin. Feeds `metadataBase`, the author link and the
+ * OpenGraph URL, so every absolute URL the head advertises starts here.
+ *
+ * Vercel is wired up and `https://kunyuan.vercel.app` is the production origin
+ * — it answers 200 directly, with no redirect to some other host — so the
+ * literal below is a real answer rather than the placeholder it used to be.
+ *
+ * The two overrides above it exist so that stays true without an edit here.
+ * `NEXT_PUBLIC_SITE_URL` wins outright, for a custom domain or a local
+ * override. `VERCEL_PROJECT_PRODUCTION_URL` is Vercel's own name for the
+ * project's production domain, a bare host with no scheme, set on every
+ * deployment including previews — and pointing a preview's canonical and
+ * OpenGraph URLs at production is what we want, since the alternative is
+ * advertising a throwaway deployment hostname. It follows a custom domain
+ * automatically once one is attached in the dashboard.
+ *
+ * Both are absent under `next dev` and in any build off Vercel, which is what
+ * the literal is for.
+ */
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "https://kunyuan.vercel.app");
 
 const description = `${site.role} — ${site.study} at the ${site.school}. Real-time systems, full-stack web apps, and interface experiments.`;
 
