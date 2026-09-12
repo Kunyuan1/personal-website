@@ -6,7 +6,7 @@ export const site = {
   school: "University of Toronto Mississauga",
   location: "Toronto, ON",
   tagline:
-    "Computer science and statistics at UTM. I build games, real-time systems, and interfaces — and I like the problems where the answer isn't solvable in closed form.",
+    "Computer science and statistics at UTM. I like to build software projects based off my hobbies, working with both frontend and backend — and I'm drawn to the problems where the answer isn't solvable in closed form.",
   email: "kunyuanhu01@gmail.com",
   github: "https://github.com/Kunyuan1",
   linkedin: "https://www.linkedin.com/in/kunyuan-hu-2a088430a/",

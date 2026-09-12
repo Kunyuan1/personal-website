@@ -6,7 +6,7 @@ import { projects, type Project } from "@/data/projects";
 export const metadata = {
   title: "Projects",
   description:
-    "Games, real-time systems and interfaces built by Kunyuan Hu — with source on GitHub.",
+    "Real-time systems, full-stack web apps and interfaces built by Kunyuan Hu — with source on GitHub.",
 };
 
 export default function ProjectsPage() {

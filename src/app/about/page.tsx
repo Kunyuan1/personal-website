@@ -5,14 +5,14 @@ import { skillGroups } from "@/data/skills";
 
 export const metadata = {
   title: "About",
-  description: `${site.study} at the ${site.school}. Game development, real-time systems and AI.`,
+  description: `${site.study} at the ${site.school}. Software development, real-time systems and AI.`,
 };
 
 const facts = [
   { label: "Studying", cjk: "专业", value: site.study },
   { label: "At", cjk: "学校", value: site.school },
   { label: "Based in", cjk: "所在", value: site.location },
-  { label: "Into", cjk: "爱好", value: "Game dev, AI, lifting, singing" },
+  { label: "Into", cjk: "爱好", value: "AI, game dev, lifting, singing" },
 ];
 
 export default function AboutPage() {
@@ -40,8 +40,8 @@ export default function AboutPage() {
 
             <p className="text-base leading-relaxed text-muted">
               I study computer science and statistics at the University of Toronto
-              Mississauga, and most of what I build sits where those two overlap:
-              game development and artificial intelligence. Simulation, systems that
+              Mississauga, and most of what I build draws on both: software
+              development and artificial intelligence. Simulation, systems that
               have to keep several people in step at once, and interfaces that make a
               hard thing feel easy.
             </p>

@@ -21,7 +21,7 @@ const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
 // TODO(kunyuan): point this at your real domain once Vercel is wired up.
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://kunyuan.vercel.app";
 
-const description = `${site.role} — ${site.study} at the ${site.school}. Real-time multiplayer, game development, and full-stack projects.`;
+const description = `${site.role} — ${site.study} at the ${site.school}. Real-time systems, full-stack web apps, and interface experiments.`;
 
 /**
  * Google Fonts can subset a CJK face down to just the glyphs we use, which
