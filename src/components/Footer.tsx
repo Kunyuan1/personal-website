@@ -52,15 +52,6 @@ export default function Footer() {
                 Fleet departed after #{returnedAfter} · system re-formed
               </p>
             ) : null}
-            {/* 不要回答 — the warning sent back across four light years. */}
-            <p
-              className="font-mono text-xs text-faint/70"
-              title="Do not answer. Do not answer. Do not answer."
-            >
-              <span className="cjk">不要回答</span>
-              <span className="mx-2 text-line-bright">·</span>
-              Do not answer
-            </p>
           </div>
         </div>
       </div>
