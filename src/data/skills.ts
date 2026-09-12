@@ -5,10 +5,14 @@ export type SkillGroup = {
 };
 
 /**
- * Taken from what the projects actually use, not aspirational, and grouped the
- * way the résumé groups them so the two read as one claim. The résumé's fifth
- * group — spoken languages — lives in the facts panel on the About page
- * instead, since it isn't part of a stack.
+ * What the projects actually use, plus what coursework covers — not aspiration.
+ * C is the coursework half: no C project is in the archive and the résumé does
+ * not list it either. Java was the other half — 0f7656c flagged it as the first
+ * entry this comment did not cover — until the résumé picked it up.
+ *
+ * Grouped the way the résumé groups them so the two read as one claim. The
+ * résumé's fifth group — spoken languages — lives in the facts panel on the
+ * About page instead, since it isn't part of a stack.
  */
 export const skillGroups: SkillGroup[] = [
   {
