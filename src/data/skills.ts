@@ -4,17 +4,27 @@ export type SkillGroup = {
   items: string[];
 };
 
-/** Taken from what the projects actually use, not aspirational. */
+/**
+ * Taken from what the projects actually use, not aspirational, and grouped the
+ * way the résumé groups them so the two read as one claim. The résumé's fifth
+ * group — spoken languages — lives in the facts panel on the About page
+ * instead, since it isn't part of a stack.
+ */
 export const skillGroups: SkillGroup[] = [
   {
     label: "Languages",
     cjk: "语言",
-    items: ["Python", "Java", "JavaScript", "TypeScript", "C", "SQL", "HTML", "CSS"],
+    items: ["Python", "TypeScript", "JavaScript", "Java", "C", "SQL", "HTML", "CSS"],
   },
   {
     label: "Frameworks",
     cjk: "框架",
-    items: ["React", "Next.js", "FastAPI", "Django", "Node.js", "Pygame", "Tailwind CSS"],
+    items: ["React", "Next.js", "Node.js", "Django", "FastAPI", "Celery", "Pygame", "Tailwind CSS"],
+  },
+  {
+    label: "ML & Data",
+    cjk: "智能",
+    items: ["YOLOv8-pose", "Roboflow", "OpenCV", "PostgreSQL", "SQLite"],
   },
   {
     label: "Tools",
@@ -22,12 +32,12 @@ export const skillGroups: SkillGroup[] = [
     items: [
       "Git",
       "Docker",
-      "Celery",
-      "OpenCV",
-      "PostgreSQL",
+      "FFmpeg",
       "WebSockets",
+      "Redis",
+      "Modal",
       "Vite",
-      "SQLite",
+      "REST APIs",
       "Vercel",
       "Linux",
     ],

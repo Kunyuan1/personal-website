@@ -1,6 +1,6 @@
 import PageHeader from "@/components/PageHeader";
 import Reveal from "@/components/Reveal";
-import { awards, education, experience, type ResumeEntry } from "@/data/resume";
+import { education, experience, type ResumeEntry } from "@/data/resume";
 import { site } from "@/data/site";
 
 export const metadata = {
@@ -39,35 +39,6 @@ export default function ResumePage() {
             <Timeline cjk="经历" heading="Experience" entries={experience} delay={120} />
           )}
         </div>
-
-        {awards.length > 0 && (
-          <div className="mt-20 border-t border-line pt-12">
-            <Reveal>
-              <h2 className="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-faint">
-                <span className="cjk">奖项</span>
-                <span>Awards</span>
-              </h2>
-            </Reveal>
-
-            <ul className="mt-8 grid gap-4 sm:grid-cols-2">
-              {awards.map((award, index) => (
-                <Reveal key={award.title} delay={index * 90}>
-                  <li className="flex h-full items-start justify-between gap-6 border border-line bg-surface p-6">
-                    <span>
-                      <span className="block text-base text-ink">{award.title}</span>
-                      <span className="mt-1.5 block text-sm leading-relaxed text-muted">
-                        {award.detail}
-                      </span>
-                    </span>
-                    <span className="shrink-0 font-mono text-xs text-faint">
-                      {award.year}
-                    </span>
-                  </li>
-                </Reveal>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
     </>
   );

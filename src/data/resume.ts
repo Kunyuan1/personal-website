@@ -1,10 +1,10 @@
 /**
- * Résumé content.
+ * Résumé content, kept in step with public/resume.pdf.
  *
- * TODO(kunyuan): everything below except the degree itself is a placeholder,
- * left in so the layout can be judged with realistic shapes in it. Replace the
- * dates, and swap the experience and award entries for real ones — or delete
- * any array entirely and its column disappears.
+ * The PDF is the one-page version and this is the same material with room to
+ * breathe; if one changes, change the other. Projects are deliberately absent —
+ * the PDF lists four, the site has its own archive in src/data/projects.ts, and
+ * keeping a second copy of them here would just be a third thing to forget.
  */
 
 export type ResumeEntry = {
@@ -19,31 +19,24 @@ export const education: ResumeEntry[] = [
   {
     title: "HBSc, Computer Science & Statistics",
     organization: "University of Toronto Mississauga",
-    period: "20XX — 20XX", // TODO: real dates
+    period: "Expected May 2029",
     location: "Mississauga, ON",
     points: [
-      "Coursework in data structures, algorithms, software design and probability.",
-      "Focus on where statistical modelling meets applied software.",
+      "Double major. Coursework in software design, data structures & analysis, probability and statistics, linear algebra and calculus.",
+      "GPA 3.42 / 4.00.",
     ],
   },
 ];
 
 export const experience: ResumeEntry[] = [
   {
-    title: "Role Title",
-    organization: "Organization",
-    period: "20XX — Present",
-    location: "Toronto, ON",
+    title: "Server, Part-Time",
+    organization: "The Bradley Gracious Retirement Living",
+    period: "Dec 2022 — Mar 2024",
+    location: "Mississauga, ON",
     points: [
-      "An outcome you delivered, ideally with a number attached to it.",
-      "The tools you used and what you were responsible for owning.",
+      "Served residents daily in an assisted living community, balancing speed of service against individual dietary needs and accessibility requirements.",
+      "Held the role for 15 months alongside full-time studies, coordinating with kitchen and care staff through peak service.",
     ],
   },
-];
-
-export type Award = { title: string; detail: string; year: string };
-
-export const awards: Award[] = [
-  { title: "Award or scholarship", detail: "What it was given for.", year: "20XX" },
-  { title: "Hackathon or competition", detail: "Placement, and what you built.", year: "20XX" },
 ];
