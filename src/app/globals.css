@@ -279,12 +279,26 @@ html[data-intro="on"] .intro {
   box-shadow:
     0 0 14px 3px rgba(214, 230, 246, 0.9),
     0 0 46px 10px rgba(150, 190, 240, 0.42);
-  /* `infinite` is safe only because the sequence has an end: removing
-     `data-intro` puts `.intro` back to `display: none`, and a display:none
-     element runs no animations. Without that this composited a transform and
-     an opacity every 2.8s, forever, on a hidden element that produced no
-     pixels — for the whole visit, because the overlay is in the root layout
-     and survives every client-side navigation. */
+}
+
+/* The breath is part of the sequence, so it starts with the rest of it.
+
+   Left on `.intro-photon` it began the moment the curtain went up, which under
+   `wait` is whenever Chrome got round to rendering the prerender. A prerender
+   that sat for 4.2s would hand over a photon 1.4s into the loop — `scale(1.22)`
+   at full opacity, the peak of the breath — so the sequence would open on a
+   dilated point contracting instead of a still one expanding. `wait` is
+   supposed to be motionless; this is what makes it so.
+
+   `infinite` is safe only because the sequence has an end: removing
+   `data-intro` puts `.intro` back to `display: none`, and a display:none
+   element runs no animations. Without that this composited a transform and
+   an opacity every 2.8s, forever, on a hidden element that produced no
+   pixels — for the whole visit, because the overlay is in the root layout
+   and survives every client-side navigation. Gating on `on` rather than on
+   any `data-intro` keeps that true through the waiting state too, which the
+   30s cap no longer bounds. */
+html[data-intro="on"] .intro-photon {
   animation: intro-breathe 2.8s ease-in-out infinite;
 }
 
@@ -324,29 +338,37 @@ html[data-intro="on"] .intro {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 11px;
   line-height: 1.9;
-  /* Hidden until the sequence starts, not merely until it is animated.
+}
 
-     The line is the second beat — photon, then what the photon says — and that
-     ordering is carried entirely by the animation's own `0%`. Left on
-     `.intro-words`, the fade would begin the instant `.intro` became visible,
-     which on a prerendered arrival is whenever Chrome got round to rendering
-     the page rather than when anyone looked at it.
+/* Hidden during the wait, and *only* during the wait.
 
-     In practice a hidden document freezes animation clocks, so the fade would
-     most likely still be sitting at 0 on activation — measured: `currentTime`
-     was 0 after 1.6s in a background tab. That is a reprieve, not a guarantee,
-     and it is not one worth resting the opening beat on. Gating it below says
-     what is meant.
+   The line is the second beat — photon, then what the photon says — and that
+   ordering is carried entirely by the animation's own `0%`. Left ungated, the
+   fade would begin the instant `.intro` became visible, which on a prerendered
+   arrival is whenever Chrome got round to rendering the page rather than when
+   anyone looked at it, and the words would already be up at handover.
 
-     Dropping the animation from the waiting state without this `opacity: 0`
-     would be worse than either — no animation means no `both` fill, so the
-     words would paint at full opacity immediately. */
+   The hiding belongs here rather than on `.intro-words` itself. As a default it
+   would make the animation's `both` fill the only thing that ever restores the
+   line — and `animation: none !important` from an extension or a user
+   stylesheet is common, is not the same setting as `prefers-reduced-motion`,
+   and is the exact case the timeout in `layout.tsx` exists to survive. That
+   visitor would get five seconds of black and a photon with no text at all,
+   where before they got the line at full opacity. Scoped to `wait`, the
+   override degrades the way it always did: no fade, words visible.
+
+   A hidden document freezes animation clocks, so an ungated fade would most
+   likely still have been sitting at 0 on activation anyway — measured:
+   `currentTime` was 0 after 1.6s in a background tab. That is a reprieve
+   rather than a guarantee, and not one worth resting the opening beat on. */
+html[data-intro="wait"] .intro-words {
   opacity: 0;
 }
 
-/* Same gate as the tear, for the same reason: the clock starts when someone is
-   there to watch it. `both` fills backwards over `0%` and forwards over the
-   end, so this overrides the `opacity: 0` above for the whole run and after. */
+/* Same gate as the tear and the breath: the clock starts when someone is there
+   to watch it. `both` fills backwards over `0%`, so there is no flash of a
+   visible line between the `wait` rule ceasing to apply and the fade starting
+   — the animation is already in effect at its own time zero. */
 html[data-intro="on"] .intro-words {
   /* Derived, because `--intro-hold` is a knob that has already moved three
      times. At a flat 1400ms, dropping the hold to 1200 would have left the

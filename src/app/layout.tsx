@@ -166,8 +166,16 @@ export const metadata: Metadata = {
  * and it is a different bet: a prerender is always activated or discarded, so
  * the wait is bounded by the browser, while a background tab may never be
  * looked at, and any browser that reports `hidden` while visible would hold a
- * black screen over the page instead of merely skipping an animation. The cap
- * below keeps even the bounded wait from being unbounded.
+ * black screen over the page instead of merely skipping an animation.
+ *
+ * That is also why `prerenderingchange` is authoritative and `visibilitychange`
+ * is only a fallback. A prerender activated *into* a hidden tab is the
+ * background-tab case arriving by another road, so it ends there rather than
+ * deferring: the alternative is a curtain dropping over a page that has been
+ * sitting rendered in a tab the visitor is only now looking at, which is the
+ * outcome the paragraph above declines to risk. `visibilitychange` exists for
+ * the browser that activates without announcing it, and whichever signal
+ * arrives second is a no-op.
  *
  * Scrolling is pinned rather than locked with `overflow: hidden`. The lock is
  * the obvious fix and it is wrong here: hiding the root's overflow takes the
@@ -200,11 +208,22 @@ export const metadata: Metadata = {
  * is a no-op, and a browser that activates without the first still gets its
  * intro.
  *
- * The 30s cap is the same safety net as the timeout that ends the tear, moved
- * one stage earlier: a prerender that is somehow neither activated nor
- * discarded takes the curtain down rather than holding it. Worst case a
- * visitor gets the site with no arrival sequence, which is exactly what this
- * bug did every time.
+ * **The 30s cap takes the curtain down without ending the sequence, and the
+ * difference is the whole point of it.** Calling `end` there reintroduced this
+ * PR's own bug on a slower road: type the address, get distracted for half a
+ * minute with the omnibox text unchanged so the prerender survives, press
+ * Enter, and `start` would find `done` already set and refuse — the finished
+ * page with no photon, no words and no tear, which is the exact symptom this
+ * file was opened to fix.
+ *
+ * The cap is insurance against a browser that claims to be prerendering while
+ * a visitor is actually looking at the page, and nothing else. That is the only
+ * state where a held curtain costs anything: a prerender that is never
+ * activated is by construction never seen, and the document is discarded
+ * whole. So the cap lowers the curtain and leaves every listener armed, and a
+ * late activation puts it straight back up and plays — nothing has been
+ * presented yet, so re-arming is free. The sequence's real end, once someone is
+ * watching, is `start`'s own timeout.
  */
 const introScript = `(function(){try{
 var d=document.documentElement;
@@ -215,10 +234,12 @@ if(!waiting&&document.hidden)return;
 var started=false,done=false,cap;
 var stop=function(e){e.preventDefault();},pin=function(){window.scrollTo(0,0);};
 var onEnd=function(e){if(e.animationName==="intro-tear")end();};
-var onShow=function(){if(!document.hidden)start();};
+var onActivate=function(){if(document.prerendering)return;
+if(document.hidden){end();return;}start();};
+var onVisible=function(){if(!document.hidden)start();};
 var unwait=function(){clearTimeout(cap);
-document.removeEventListener("prerenderingchange",onShow);
-document.removeEventListener("visibilitychange",onShow);};
+document.removeEventListener("prerenderingchange",onActivate);
+document.removeEventListener("visibilitychange",onVisible);};
 var end=function(){if(done)return;done=true;unwait();
 document.removeEventListener("animationend",onEnd,true);
 window.removeEventListener("wheel",stop);
@@ -231,16 +252,16 @@ window.addEventListener("wheel",stop,{passive:false});
 window.addEventListener("touchmove",stop,{passive:false});
 window.addEventListener("scroll",pin);
 document.addEventListener("animationend",onEnd,true);
-var cs=getComputedStyle(d);
-var ms=function(n){var v=cs.getPropertyValue(n).trim();
+var total=0;
+try{var cs=getComputedStyle(d),ms=function(n){var v=cs.getPropertyValue(n).trim();
 return v.slice(-2)==="ms"?parseFloat(v):v.slice(-1)==="s"?parseFloat(v)*1000:0;};
-var total=ms("--intro-hold")+ms("--intro-glitch");
+total=ms("--intro-hold")+ms("--intro-glitch");}catch(e){}
 setTimeout(end,(total||5000)+1500);};
 if(!waiting){start();return;}
 d.setAttribute("data-intro","wait");
-document.addEventListener("prerenderingchange",onShow);
-document.addEventListener("visibilitychange",onShow);
-cap=setTimeout(end,30000);
+document.addEventListener("prerenderingchange",onActivate);
+document.addEventListener("visibilitychange",onVisible);
+cap=setTimeout(function(){d.removeAttribute("data-intro");},30000);
 }catch(e){}})();`;
 
 export const viewport: Viewport = {
