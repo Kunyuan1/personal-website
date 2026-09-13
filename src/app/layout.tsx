@@ -145,6 +145,30 @@ export const metadata: Metadata = {
  *    animation, so the tear would be over before it was ever looked at
  *  - under `prefers-reduced-motion`, which asks not to be shown an animation
  *
+ * **A prerender is not the hidden-tab case, and reading it as one silently ate
+ * the intro for the most common arrival there is.** Chrome renders a URL typed
+ * into the address bar before Enter is pressed, and a prerendering document's
+ * `visibilityState` is `"hidden"` — so the guard above fired, the curtain was
+ * never armed, and activation showed the finished page. Typing the site's own
+ * name, the way its author does, was the one way in that never saw it; a link
+ * from search results, being an ordinary visible navigation, played fine.
+ *
+ * The distinction the guard actually wants is *never visible* against *not
+ * visible yet*. So `document.prerendering` splits them: a prerendered document
+ * puts the curtain up immediately as `data-intro="wait"` — black, motionless,
+ * and part of the frame Chrome has already composited — and starts the clock
+ * on `prerenderingchange`, when the visitor is finally looking at it. Arming
+ * the whole thing at activation instead would reintroduce the flash this
+ * script exists to prevent, one step later: the prerendered page is painted by
+ * then, so the black would land on top of it.
+ *
+ * A genuinely hidden tab still refuses, unchanged. Deferring there is tempting
+ * and it is a different bet: a prerender is always activated or discarded, so
+ * the wait is bounded by the browser, while a background tab may never be
+ * looked at, and any browser that reports `hidden` while visible would hold a
+ * black screen over the page instead of merely skipping an animation. The cap
+ * below keeps even the bounded wait from being unbounded.
+ *
  * Scrolling is pinned rather than locked with `overflow: hidden`. The lock is
  * the obvious fix and it is wrong here: hiding the root's overflow takes the
  * scrollbar's width back, `scrollbar-gutter: stable` does not reserve a gutter
@@ -169,31 +193,54 @@ export const metadata: Metadata = {
  * setting as `prefers-reduced-motion`.
  *
  * There is no re-entrancy to protect against: this runs once per document
- * load, and `end` guards itself with `done` besides.
+ * load, and `start` and `end` guard themselves with `started` and `done`
+ * besides — which is what lets the two activation signals be belt and braces
+ * for each other. `prerenderingchange` is the one that should fire;
+ * `visibilitychange` is listened for as well because whichever arrives second
+ * is a no-op, and a browser that activates without the first still gets its
+ * intro.
+ *
+ * The 30s cap is the same safety net as the timeout that ends the tear, moved
+ * one stage earlier: a prerender that is somehow neither activated nor
+ * discarded takes the curtain down rather than holding it. Worst case a
+ * visitor gets the site with no arrival sequence, which is exactly what this
+ * bug did every time.
  */
 const introScript = `(function(){try{
 var d=document.documentElement;
 if(location.pathname!=="/")return;
-if(document.hidden)return;
 if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
-d.setAttribute("data-intro","on");
+var waiting=document.prerendering===true;
+if(!waiting&&document.hidden)return;
+var started=false,done=false,cap;
 var stop=function(e){e.preventDefault();},pin=function(){window.scrollTo(0,0);};
-window.addEventListener("wheel",stop,{passive:false});
-window.addEventListener("touchmove",stop,{passive:false});
-window.addEventListener("scroll",pin);
-var cs=getComputedStyle(d),done=false;
-var ms=function(n){var v=cs.getPropertyValue(n).trim();
-return v.slice(-2)==="ms"?parseFloat(v):v.slice(-1)==="s"?parseFloat(v)*1000:0;};
-var end=function(){if(done)return;done=true;
+var onEnd=function(e){if(e.animationName==="intro-tear")end();};
+var onShow=function(){if(!document.hidden)start();};
+var unwait=function(){clearTimeout(cap);
+document.removeEventListener("prerenderingchange",onShow);
+document.removeEventListener("visibilitychange",onShow);};
+var end=function(){if(done)return;done=true;unwait();
 document.removeEventListener("animationend",onEnd,true);
 window.removeEventListener("wheel",stop);
 window.removeEventListener("touchmove",stop);
 window.removeEventListener("scroll",pin);
 d.removeAttribute("data-intro");};
-var onEnd=function(e){if(e.animationName==="intro-tear")end();};
+var start=function(){if(started||done)return;started=true;unwait();
+d.setAttribute("data-intro","on");
+window.addEventListener("wheel",stop,{passive:false});
+window.addEventListener("touchmove",stop,{passive:false});
+window.addEventListener("scroll",pin);
 document.addEventListener("animationend",onEnd,true);
+var cs=getComputedStyle(d);
+var ms=function(n){var v=cs.getPropertyValue(n).trim();
+return v.slice(-2)==="ms"?parseFloat(v):v.slice(-1)==="s"?parseFloat(v)*1000:0;};
 var total=ms("--intro-hold")+ms("--intro-glitch");
-setTimeout(end,(total||5000)+1500);
+setTimeout(end,(total||5000)+1500);};
+if(!waiting){start();return;}
+d.setAttribute("data-intro","wait");
+document.addEventListener("prerenderingchange",onShow);
+document.addEventListener("visibilitychange",onShow);
+cap=setTimeout(end,30000);
 }catch(e){}})();`;
 
 export const viewport: Viewport = {
