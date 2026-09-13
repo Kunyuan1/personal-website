@@ -240,8 +240,20 @@
   z-index: 100;
 }
 
-html[data-intro="on"] .intro {
+/* Two states, because a prerendered arrival needs the curtain up before the
+   clock starts.
+
+   Chrome renders an omnibox-typed URL in the background and presents that
+   finished frame the instant Enter is pressed. If the curtain were armed only
+   on activation it would drop over a page the visitor is already looking at —
+   the same "finished page, then black" flash the blocking script exists to
+   avoid, just moved later. So `wait` paints the black into the prerendered
+   frame, and `on` — set at activation — starts the hold and the tear. */
+html[data-intro] .intro {
   display: flex;
+}
+
+html[data-intro="on"] .intro {
   animation: intro-tear var(--intro-glitch) steps(1, end) var(--intro-hold) forwards;
 }
 
@@ -312,6 +324,30 @@ html[data-intro="on"] .intro {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 11px;
   line-height: 1.9;
+  /* Hidden until the sequence starts, not merely until it is animated.
+
+     The line is the second beat — photon, then what the photon says — and that
+     ordering is carried entirely by the animation's own `0%`. Left on
+     `.intro-words`, the fade would begin the instant `.intro` became visible,
+     which on a prerendered arrival is whenever Chrome got round to rendering
+     the page rather than when anyone looked at it.
+
+     In practice a hidden document freezes animation clocks, so the fade would
+     most likely still be sitting at 0 on activation — measured: `currentTime`
+     was 0 after 1.6s in a background tab. That is a reprieve, not a guarantee,
+     and it is not one worth resting the opening beat on. Gating it below says
+     what is meant.
+
+     Dropping the animation from the waiting state without this `opacity: 0`
+     would be worse than either — no animation means no `both` fill, so the
+     words would paint at full opacity immediately. */
+  opacity: 0;
+}
+
+/* Same gate as the tear, for the same reason: the clock starts when someone is
+   there to watch it. `both` fills backwards over `0%` and forwards over the
+   end, so this overrides the `opacity: 0` above for the whole run and after. */
+html[data-intro="on"] .intro-words {
   /* Derived, because `--intro-hold` is a knob that has already moved three
      times. At a flat 1400ms, dropping the hold to 1200 would have left the
      line still fading in as the tear started. */
