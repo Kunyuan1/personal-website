@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "check:glyphs": "node scripts/check-glyphs.mjs",
+    "check:intro": "node scripts/check-intro.mjs",
     "sim:report": "node --experimental-strip-types --no-warnings scripts/simulation-report.mts"
   },
   "dependencies": {
