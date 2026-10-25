@@ -40,6 +40,24 @@ export type Project = {
 export const projects: Project[] = [
   {
     num: "01",
+    slug: "kinvue",
+    title: "Kinvue",
+    kind: "Desktop App · 2026",
+    summary:
+      "A caregiver can't tell by eye whether today's pulse is unusual for their parent. This can.",
+    description:
+      "A daily check-in for an older adult and the person who looks after them. Thirty seconds in front of a webcam reads pulse, breathing and HRV through the Presage SmartSpectra SDK, four short questions cover mood, sleep, food and pain, and the session is scored against that person's own recent history rather than a textbook range. The caregiver's dashboard says what was different and by how much, in plain language. Early-stage and not yet used by the people it's for.",
+    highlights: [
+      "Each check-in compared with the person's own last 14, never a population norm, and every flag names the values behind it",
+      "Scoring kept in framework-free TypeScript behind 1,100+ Vitest tests, separate from Electron and React",
+      "Wireshark capture showed the SDK sends a ~55 kB licence meter, not video; history is encrypted on the device",
+    ],
+    tech: ["Electron", "React", "TypeScript", "Tailwind CSS", "Vitest"],
+    github: "https://github.com/Kunyuan1/Kinvue",
+    images: [],
+  },
+  {
+    num: "02",
     slug: "clipfarm",
     title: "ClipFarm",
     kind: "Computer Vision Pipeline · 2026",
@@ -57,7 +75,7 @@ export const projects: Project[] = [
     images: [],
   },
   {
-    num: "02",
+    num: "03",
     slug: "imposter",
     title: "Imposter",
     kind: "Real-Time Multiplayer · 2026",
@@ -75,7 +93,7 @@ export const projects: Project[] = [
     images: [],
   },
   {
-    num: "03",
+    num: "04",
     slug: "medi-cal",
     title: "Medi-Cal Scheduling",
     kind: "Full-Stack Web App · 2024",
@@ -99,7 +117,7 @@ export const projects: Project[] = [
     ],
   },
   {
-    num: "04",
+    num: "05",
     slug: "erics-mansion",
     title: "Eric's Mansion",
     kind: "Game Development · 2024",
@@ -121,7 +139,7 @@ export const projects: Project[] = [
     ],
   },
   {
-    num: "05",
+    num: "06",
     slug: "worst-birthday",
     title: "Worst Birthday UI",
     kind: "UI Experiment · 2024",
