@@ -23,12 +23,12 @@ export const skillGroups: SkillGroup[] = [
   {
     label: "Frameworks",
     cjk: "框架",
-    items: ["React", "Next.js", "Node.js", "Django", "FastAPI", "Celery", "Pygame", "Tailwind CSS"],
+    items: ["React", "Next.js", "Node.js", "Electron", "Django", "FastAPI", "Celery", "Pygame", "Tailwind CSS"],
   },
   {
     label: "ML & Data",
     cjk: "智能",
-    items: ["YOLOv8-pose", "Roboflow", "OpenCV", "PostgreSQL", "SQLite"],
+    items: ["Mixed-effects models", "MANCOVA", "YOLOv8-pose", "Roboflow", "OpenCV", "PostgreSQL", "SQLite"],
   },
   {
     label: "Tools",
@@ -41,6 +41,8 @@ export const skillGroups: SkillGroup[] = [
       "Redis",
       "Modal",
       "Vite",
+      "Vitest",
+      "Wireshark",
       "REST APIs",
       "Vercel",
       "Linux",

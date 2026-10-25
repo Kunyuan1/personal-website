@@ -30,6 +30,18 @@ export const education: ResumeEntry[] = [
 
 export const experience: ResumeEntry[] = [
   {
+    title: "Research Assistant",
+    organization: "Dr. Antonio Vivone, University of Toronto",
+    period: "Oct 2026 — Present",
+    location: "Toronto, ON",
+    points: [
+      "Audited the dataset and supplementary materials of a multi-classroom education study ahead of manuscript submission, delivering a report of 15 findings ranked by severity.",
+      "Reproduced the study's mixed-effects model, effect sizes and MANCOVA from raw data, reconstructing the undocumented classroom groupings needed to verify the reported results.",
+      "Identified two interaction tests mislabelled as omnibus tests, and recomputed the correct joint Wald tests.",
+      "Continuing with the project as a summer research assistant in 2027.",
+    ],
+  },
+  {
     title: "Server, Part-Time",
     organization: "The Bradley Gracious Retirement Living",
     period: "Dec 2022 — Mar 2024",
