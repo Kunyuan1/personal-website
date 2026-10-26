@@ -23,7 +23,6 @@ export const education: ResumeEntry[] = [
     location: "Mississauga, ON",
     points: [
       "Double major. Coursework in software design, data structures & analysis, probability and statistics, linear algebra and calculus.",
-      "GPA 3.42 / 4.00.",
     ],
   },
 ];
