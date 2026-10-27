@@ -18,7 +18,7 @@ export const skillGroups: SkillGroup[] = [
   {
     label: "Programming",
     cjk: "语言",
-    items: ["Python", "TypeScript", "JavaScript", "Java", "SQL", "HTML", "CSS"],
+    items: ["Python", "TypeScript", "JavaScript", "Java", "HTML", "CSS"],
   },
   {
     label: "Frameworks",
