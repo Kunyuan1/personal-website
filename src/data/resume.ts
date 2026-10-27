@@ -44,7 +44,7 @@ export const experience: ResumeEntry[] = [
     title: "Server, Part-Time",
     organization: "The Bradley Gracious Retirement Living",
     period: "Dec 2022 — Mar 2024",
-    location: "Mississauga, ON",
+    location: "Ottawa, ON",
     points: [
       "Served residents daily in an assisted living community, balancing speed of service against individual dietary needs and accessibility requirements.",
       "Held the role for 15 months alongside full-time studies, coordinating with kitchen and care staff through peak service.",

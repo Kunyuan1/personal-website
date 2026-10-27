@@ -13,7 +13,7 @@ const facts = [
   { label: "At", cjk: "学校", value: site.school },
   { label: "Based in", cjk: "所在", value: site.location },
   { label: "Into", cjk: "爱好", value: "AI, game dev, lifting, singing" },
-  { label: "Speaks", cjk: "言语", value: "English, French (DELF B1), Mandarin" },
+  { label: "Languages", cjk: "言语", value: "English, French (DELF B1), Mandarin" },
 ];
 
 export default function AboutPage() {
