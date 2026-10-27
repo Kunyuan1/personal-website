@@ -22,7 +22,7 @@ export const education: ResumeEntry[] = [
     period: "Expected May 2029",
     location: "Mississauga, ON",
     points: [
-      "Double major. Coursework in software design, data structures & analysis, probability and statistics, linear algebra and calculus.",
+      "Double major.",
     ],
   },
 ];
