@@ -46,10 +46,10 @@ export const projects: Project[] = [
     summary:
       "A caregiver can't tell by eye whether today's pulse is unusual for their parent. This can.",
     description:
-      "A daily check-in for an older adult and the person who looks after them. Thirty seconds in front of a webcam reads pulse, breathing and HRV through the Presage SmartSpectra SDK, four short questions cover mood, sleep, food and pain, and the session is scored against that person's own recent history rather than a textbook range. The caregiver's dashboard says what was different and by how much, in plain language. Early-stage and not yet used by the people it's for.",
+      "A daily check-in for an older adult and the person who looks after them. Up to a minute and a half in front of a webcam reads pulse, breathing and HRV through the Presage SmartSpectra SDK, four short questions cover mood, sleep, food and pain, and the session is scored against that person's own recent history rather than a textbook range. The caregiver's dashboard says what was different and by how much, in plain language. Early-stage and not yet used by the people it's for.",
     highlights: [
       "Each check-in compared with the person's own last 14, never a population norm, and every flag names the values behind it",
-      "Scoring kept in framework-free TypeScript behind 1,100+ Vitest tests, separate from Electron and React",
+      "Scoring kept in framework-free TypeScript behind 1,200+ Vitest tests, separate from Electron and React",
       "Wireshark capture showed the SDK sends a ~55 kB licence meter, not video; history is encrypted on the device",
     ],
     tech: ["Electron", "React", "TypeScript", "Tailwind CSS", "Vitest"],
@@ -64,13 +64,13 @@ export const projects: Project[] = [
     summary:
       "Three hours of volleyball footage is worth about ninety seconds. This finds which ninety.",
     description:
-      "Upload a full game and get back a filterable clip library instead of a video nobody rewatches. A Celery pipeline tracks the ball to find rallies, scores each one on crowd reaction and rally shape, refines the action label with pose estimation, then cuts the survivors with FFmpeg and tags them by action type. Ball tracking and pose both run on serverless GPUs, and tracking results are cached by video hash so a re-run costs nothing.",
+      "A four-person team's volleyball highlight generator: upload a full game, get back a condensed video and a library of tagged clips. My part was measuring it and fixing what the measurements found. I built the evaluation harnesses that score the pipeline against hand-labelled rallies, traced the condensed video cutting 42% of real play to one threshold, and fixed an upload that stalled the whole API and an endpoint that let one team tag clips with another team's players.",
     highlights: [
-      "Ball tracking as the primary path, because pose-first detection breaks on the occlusion a real gym produces",
-      "Rallies scored on crowd audio and rally shape, so only the ones above threshold are worth a GPU pass",
-      "Browser uploads go straight to object storage on a presigned URL — the API never handles the video",
+      "Real play lost from condensed games cut from 42% to 14% — a diagnostic showed the ball was tracked in every rally, so the fault was a contact threshold set twice too high",
+      "Evaluation harnesses that score each pipeline change against 126 hand-labelled rallies, instead of judging it by eye",
+      "Blocking storage writes moved off the FastAPI event loop, ending a 2.7 s stall for every other request during uploads",
     ],
-    tech: ["Next.js", "FastAPI", "Celery", "YOLOv8", "OpenCV", "Postgres"],
+    tech: ["Python", "FastAPI", "NumPy", "Next.js", "TypeScript", "Postgres"],
     github: "https://github.com/ClipFarmVB/ClipFarm",
     images: [],
   },

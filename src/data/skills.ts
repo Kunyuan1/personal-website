@@ -11,8 +11,12 @@ export type SkillGroup = {
  * 0f7656c flagged, and Java is all that is left in it.
  *
  * Grouped the way the résumé groups them so the two read as one claim. The
- * résumé's fifth group — spoken languages — lives in the facts panel on the
+ * résumé's last group — spoken languages — lives in the facts panel on the
  * About page instead, since it isn't part of a stack.
+ *
+ * ML & AI is what the waste-sorting course project used, not what ClipFarm's
+ * pipeline uses: on that team the author's work was evaluation, thresholds and
+ * the API, not the models.
  */
 export const skillGroups: SkillGroup[] = [
   {
@@ -23,12 +27,17 @@ export const skillGroups: SkillGroup[] = [
   {
     label: "Frameworks",
     cjk: "框架",
-    items: ["React", "Next.js", "Node.js", "Electron", "Django", "FastAPI", "Celery", "Pygame", "Tailwind CSS"],
+    items: ["React", "Next.js", "Node.js", "Electron", "Django", "FastAPI", "Pygame", "Tailwind CSS"],
   },
   {
-    label: "ML & Data",
+    label: "ML & AI",
     cjk: "智能",
-    items: ["Mixed-effects models", "MANCOVA", "YOLOv8-pose", "Roboflow", "OpenCV", "PostgreSQL", "SQLite"],
+    items: ["Keras", "Transfer learning", "MobileNetV2", "OpenCV", "Vision LLMs", "Ollama"],
+  },
+  {
+    label: "Data & Stats",
+    cjk: "数据",
+    items: ["pandas", "NumPy", "Matplotlib", "Mixed-effects models", "MANCOVA", "PostgreSQL", "SQLite"],
   },
   {
     label: "Tools",
