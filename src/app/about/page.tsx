@@ -92,7 +92,7 @@ export default function AboutPage() {
             <h2 className="mt-5 text-3xl sm:text-4xl">The stack</h2>
           </Reveal>
 
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {skillGroups.map((group, index) => (
               <Reveal key={group.label} delay={index * 100}>
                 <div className="h-full border border-line bg-surface p-6">
