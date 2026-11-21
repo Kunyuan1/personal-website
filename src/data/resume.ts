@@ -23,7 +23,7 @@ export const education: ResumeEntry[] = [
     location: "Mississauga, ON",
     points: [
       "Double major.",
-      "Relevant courses: Software Design (CSC207) and Applied Artificial Intelligence Fundamentals (CSC211).",
+      "Relevant courses: Software Design (CSC207), Applied Artificial Intelligence Fundamentals (CSC211), Probability and Statistics I (STA256) and Introduction to the Theory of Computation (CSC236).",
     ],
   },
 ];

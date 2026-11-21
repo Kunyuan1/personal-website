@@ -28,7 +28,8 @@ export type Project = {
   /** Two or three concrete things it does. */
   highlights: string[];
   tech: string[];
-  github: string;
+  /** Left out when the repository is private, so the page never links to a 404. */
+  github?: string;
   live?: string;
   images: { src: StaticImageData; alt: string }[];
 };
@@ -40,6 +41,23 @@ export type Project = {
 export const projects: Project[] = [
   {
     num: "01",
+    slug: "waste-sorting",
+    title: "Waste Sorting Classifier",
+    kind: "Machine Learning · 2026",
+    summary:
+      "Which bin does this go in? Four ways of answering from a photo, and where each one gets it wrong.",
+    description:
+      "A course project for CSC211 at UTM: given a photo of one piece of rubbish, pick Peel Region's recycling, organics or garbage bin. The same task is solved four ways — a person, hand-written OpenCV colour rules, a transfer-learned MobileNetV2, and a local vision LLM (Gemma 4 through Ollama) — and scored by macro-F1 on 14,500 photos, because answering \"recycling\" every time already gets 69% accuracy. Labels come from Peel's published rules, not the dataset's folder names, and some items can't be sorted from a photo at all: whether a glass bottle is recyclable depends on whether it held alcohol.",
+    highlights: [
+      "Frozen MobileNetV2 with one 64-unit hidden layer reached 0.89 test macro-F1 on photos it had never seen, against 0.62 for the LLM and 0.41 for the colour rules",
+      "Found that 48% of test photos had an identical twin in the training set, and scored every approach on the unseen photos separately so memory couldn't pass for skill",
+      "Dropped the tea-bag category after an audit found about 75% of its images were the wrong object or belonged in a different bin",
+    ],
+    tech: ["Python", "Keras", "MobileNetV2", "OpenCV", "Ollama", "pandas"],
+    images: [],
+  },
+  {
+    num: "02",
     slug: "kinvue",
     title: "Kinvue",
     kind: "Desktop App · 2026",
@@ -57,7 +75,7 @@ export const projects: Project[] = [
     images: [],
   },
   {
-    num: "02",
+    num: "03",
     slug: "clipfarm",
     title: "ClipFarm",
     kind: "Computer Vision Pipeline · 2026",
@@ -75,7 +93,7 @@ export const projects: Project[] = [
     images: [],
   },
   {
-    num: "03",
+    num: "04",
     slug: "imposter",
     title: "Imposter",
     kind: "Real-Time Multiplayer · 2026",
@@ -93,7 +111,7 @@ export const projects: Project[] = [
     images: [],
   },
   {
-    num: "04",
+    num: "05",
     slug: "medi-cal",
     title: "Medi-Cal Scheduling",
     kind: "Full-Stack Web App · 2024",
@@ -117,7 +135,7 @@ export const projects: Project[] = [
     ],
   },
   {
-    num: "05",
+    num: "06",
     slug: "erics-mansion",
     title: "Eric's Mansion",
     kind: "Game Development · 2024",
@@ -139,7 +157,7 @@ export const projects: Project[] = [
     ],
   },
   {
-    num: "06",
+    num: "07",
     slug: "worst-birthday",
     title: "Worst Birthday UI",
     kind: "UI Experiment · 2024",
