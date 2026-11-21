@@ -6,7 +6,7 @@ import { projects, type Project } from "@/data/projects";
 export const metadata = {
   title: "Projects",
   description:
-    "Real-time systems, full-stack web apps and interfaces built by Kunyuan Hu — with source on GitHub.",
+    "Machine learning, real-time systems, full-stack web apps and interfaces built by Kunyuan Hu — most with source on GitHub.",
 };
 
 export default function ProjectsPage() {
@@ -16,7 +16,7 @@ export default function ProjectsPage() {
         cjk="档案"
         eyebrow="The Archive"
         title="Projects"
-        intro="Six things built to answer a question I had. Every one is on GitHub if you'd rather read the code than take my word for it."
+        intro="Seven things built to answer a question I had. Most are on GitHub if you'd rather read the code than take my word for it."
       />
 
       <div className="mx-auto max-w-6xl px-6 py-20 sm:py-28">
@@ -97,17 +97,19 @@ function ProjectRow({ project, index }: { project: Project; index: number }) {
                 </span>
               </a>
             )}
-            <a
-              href={project.github}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex items-center gap-2 border border-line px-4 py-2 text-sm text-muted transition-colors hover:border-line-bright hover:text-ink"
-            >
-              Source
-              <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
-                ↗
-              </span>
-            </a>
+            {project.github && (
+              <a
+                href={project.github}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-2 border border-line px-4 py-2 text-sm text-muted transition-colors hover:border-line-bright hover:text-ink"
+              >
+                Source
+                <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
+                  ↗
+                </span>
+              </a>
+            )}
           </div>
         </div>
       </article>
@@ -138,7 +140,11 @@ function NoShots({ project }: { project: Project }) {
       </div>
 
       <p className="font-mono text-[11px] text-faint">
-        {project.live ? "Playable in the browser →" : "Source on GitHub →"}
+        {project.live
+          ? "Playable in the browser →"
+          : project.github
+            ? "Source on GitHub →"
+            : "Source kept private"}
       </p>
     </div>
   );
